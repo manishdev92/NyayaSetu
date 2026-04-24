@@ -23,6 +23,7 @@ concurrency:
   group: deploy-aws-${{ github.ref }}
   cancel-in-progress: false
 
+# Minimal scope: OIDC to AWS + read repo
 permissions:
   id-token: write
   contents: read

@@ -6,8 +6,20 @@ on:
   pull_request:
     branches: [main, master]
 
+permissions:
+  contents: read
+
 jobs:
+  repo-safety:
+    name: No tracked .env or Terraform state
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check for forbidden committed paths
+        run: ./scripts/check-no-forbidden-secrets.sh
+
   backend:
+    needs: repo-safety
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -23,6 +35,7 @@ jobs:
         run: python -m pytest tests/ -q
 
   frontend:
+    needs: repo-safety
     runs-on: ubuntu-latest
     defaults:
       run:

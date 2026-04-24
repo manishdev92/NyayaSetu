@@ -10,6 +10,8 @@ Full runbook: [docs/DEPLOYMENT_AWS.md](../docs/DEPLOYMENT_AWS.md).
 | `terraform/ecr/` | Thin wrapper: ECR only (quick apply). |
 | `terraform/nyayasetu/` | **Full stack:** ECR + GitHub OIDC deploy role + App Runner ECR access role + optional App Runner services. |
 
+**Secrets / `.env`:** do not commit real `backend/.env` or `frontend/.env` — they are gitignored. Use `*.env.example` and see [docs/ENVIRONMENT.md](../docs/ENVIRONMENT.md). CI enforces with `scripts/check-no-forbidden-secrets.sh`.
+
 ## One-shot bootstrap (recommended)
 
 From the **repository root**, with AWS CLI configured (`aws sts get-caller-identity`):

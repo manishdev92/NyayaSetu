@@ -28,7 +28,7 @@ Override GitHub repo for OIDC trust if needed: `TF_VAR_github_repository=owner/r
 - [ ] **P0-1** Confirm AWS account, billing alert (e.g. Budgets), and **region** choice (e.g. `ap-south-1` or `us-east-1`).
 - [ ] **P0-2** Install locally: `aws` CLI v2, `docker`, `terraform` (if using Terraform for infra).
 - [ ] **P0-3** Decide **hostnames**: e.g. `api.example.com` + `app.example.com` (optional for first cut — App Runner default URLs are fine for internal demo).
-- [ ] **P0-4** List **secrets** the app needs (from `backend/.env` / Stripe/OpenAI docs — **do not** commit values): e.g. `OPENAI_API_KEY`, `CORS_ORIGINS`, Stripe keys, `NEXT_PUBLIC_*`, optional `ENTITLEMENTS_DATABASE_URL`, `redis_url`.
+- [ ] **P0-4** List **secrets** the app needs (from `backend/.env` / Stripe/OpenAI docs — **do not** commit values): e.g. `OPENAI_API_KEY`, `CORS_ORIGINS`, Stripe keys, `NEXT_PUBLIC_*`, optional `ENTITLEMENTS_DATABASE_URL`, `redis_url`. See [ENVIRONMENT.md](ENVIRONMENT.md) for what stays out of the public repo and how CI is configured.
 
 **Milestone:** Written list of env vars for API vs Web; region chosen.
 

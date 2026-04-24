@@ -1,6 +1,11 @@
+# Secrets: never commit real .env; templates (*.env.example) are OK
+**/.env
+!**/.env.example
+!**/.env.*.example
+**/.clerk/
 backend/.venv/
-backend/.env
 backend/**/__pycache__/
+# frontend/ — see frontend/.gitignore; common Next patterns at repo root
 frontend/.env.local
 frontend/.next/
 frontend/node_modules/
