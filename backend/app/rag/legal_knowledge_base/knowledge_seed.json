@@ -1,0 +1,191 @@
+{
+  "entries": [
+    {
+      "id": "bns-fir-overview",
+      "domain": "criminal",
+      "content": "FIR (First Information Report) is recorded under CrPC/BNSS procedures for cognizable offences. The informant may request a copy; investigation follows police station jurisdiction.",
+      "source_name": "Bharatiya Nagarik Suraksha Sanhita / CrPC (procedure overview)",
+      "source_url": "https://www.indiacode.nic.in/",
+      "law_type": "Procedure",
+      "section": "FIR & investigation (general)",
+      "verified": true,
+      "tags": ["fir", "police", "investigation", "bns", "ipc"]
+    },
+    {
+      "id": "labour-wages-act",
+      "domain": "labour",
+      "content": "Payment of Wages Act addresses timelines and deductions for wages; disputes often start with labour office / inspectorate before tribunals.",
+      "source_name": "Payment of Wages Act, 1936 (India Code)",
+      "source_url": "https://www.indiacode.nic.in/",
+      "law_type": "Act",
+      "section": "General duties & claims",
+      "verified": true,
+      "tags": ["salary", "wages", "labour", "employer"]
+    },
+    {
+      "id": "mva-challan",
+      "domain": "traffic",
+      "content": "Motor vehicle offences may be challaned; licence and registration matters are handled by RTO; disputes may involve appellate forums as per MV Act rules.",
+      "source_name": "Motor Vehicles Act (India Code)",
+      "source_url": "https://www.indiacode.nic.in/",
+      "law_type": "Act",
+      "section": "Offences & penalties (general)",
+      "verified": true,
+      "tags": ["traffic", "challan", "rto", "licence"]
+    },
+    {
+      "id": "it-act-cyber",
+      "domain": "it_act",
+      "content": "IT Act provisions cover certain cyber offences; complaints may be filed with cyber cells and through national cybercrime reporting channels alongside police FIR where applicable.",
+      "source_name": "Information Technology Act, 2000 (India Code)",
+      "source_url": "https://www.indiacode.nic.in/",
+      "law_type": "Act",
+      "section": "Computer-related offences (overview)",
+      "verified": true,
+      "tags": ["cyber", "fraud", "upi", "online"]
+    },
+    {
+      "id": "cp-act-consumer",
+      "domain": "consumer",
+      "content": "Consumer Protection Act provides for consumer commissions at district/state/national levels based on pecuniary jurisdiction; evidence includes bills and correspondence.",
+      "source_name": "Consumer Protection Act, 2019 (India Code)",
+      "source_url": "https://www.indiacode.nic.in/",
+      "law_type": "Act",
+      "section": "Jurisdiction & remedies (general)",
+      "verified": true,
+      "tags": ["consumer", "refund", "defect", "service"]
+    },
+    {
+      "id": "land-revenue-overview",
+      "domain": "land",
+      "content": "Land records, mutation, and revenue disputes are typically handled through tehsil/revenue officers and SDM-level authorities; civil courts may hear title suits.",
+      "source_name": "State revenue / land revenue laws (refer state portal)",
+      "source_url": "https://www.india.gov.in/",
+      "law_type": "Procedure",
+      "section": "Revenue administration (general)",
+      "verified": true,
+      "tags": ["land", "mutation", "tehsildar", "sdm", "khasra"]
+    },
+    {
+      "id": "family-maintenance-overview",
+      "domain": "family",
+      "content": "Maintenance and domestic violence remedies may involve family courts and protection officers under applicable personal laws and DV Act procedures.",
+      "source_name": "Family court procedures (high-level)",
+      "source_url": "https://districts.ecourts.gov.in/",
+      "law_type": "Procedure",
+      "section": "Maintenance / protection (general)",
+      "verified": true,
+      "tags": ["family", "divorce", "maintenance", "custody"]
+    },
+    {
+      "id": "rti-overview",
+      "domain": "administrative",
+      "content": "RTI applications are filed to public authorities with prescribed fees; first appeal lies to appellate authority as per RTI Act.",
+      "source_name": "Right to Information Act, 2005 (India Code)",
+      "source_url": "https://www.indiacode.nic.in/",
+      "law_type": "Act",
+      "section": "Application & appeals (general)",
+      "verified": true,
+      "tags": ["rti", "grievance", "government", "scheme"]
+    },
+    {
+      "id": "contract-civil-overview",
+      "domain": "civil",
+      "content": "Contract disputes may be pursued through civil courts or alternative dispute resolution depending on agreements, jurisdiction, and pecuniary limits.",
+      "source_name": "Indian Contract Act & CPC (overview)",
+      "source_url": "https://www.indiacode.nic.in/",
+      "law_type": "Act",
+      "section": "Breach & remedies (general)",
+      "verified": true,
+      "tags": ["contract", "civil", "recovery", "injunction"]
+    },
+    {
+      "id": "court-hierarchy",
+      "domain": "procedure",
+      "content": "India has district judiciary, High Courts, and the Supreme Court; filing formats and limitation periods are governed by procedural codes and court rules.",
+      "source_name": "Court structure (official portals)",
+      "source_url": "https://main.sci.gov.in/",
+      "law_type": "Procedure",
+      "section": "Hierarchy & filing (general)",
+      "verified": true,
+      "tags": ["court", "filing", "petition", "evidence"]
+    },
+    {
+      "id": "esi-pf-labour",
+      "domain": "employment",
+      "content": "PF/ESI compliance is administered by statutory bodies; disputes on contributions may involve PF/ESI authorities and labour forums as applicable.",
+      "source_name": "EPFO / ESIC official schemes (overview)",
+      "source_url": "https://www.india.gov.in/",
+      "law_type": "Procedure",
+      "section": "Statutory benefits (general)",
+      "verified": true,
+      "tags": ["pf", "esi", "labour", "benefits"]
+    },
+    {
+      "id": "insurance-motor-claim",
+      "domain": "motor",
+      "content": "Motor accident claims may involve insurance processes and Motor Accident Claims Tribunals depending on facts and jurisdiction.",
+      "source_name": "MV Act & MACT procedures (overview)",
+      "source_url": "https://www.indiacode.nic.in/",
+      "law_type": "Procedure",
+      "section": "Claims (general)",
+      "verified": true,
+      "tags": ["accident", "insurance", "traffic", "claim"]
+    },
+    {
+      "id": "rbi-ombudsman-overview",
+      "domain": "banking",
+      "content": "Banking customers may escalate grievances through the bank’s internal mechanism and the RBI Integrated Ombudsman Scheme where applicable; timelines and forms are published on RBI’s official site.",
+      "source_name": "Reserve Bank of India — ombudsman scheme (overview)",
+      "source_url": "https://www.rbi.org.in/",
+      "law_type": "Procedure",
+      "section": "Banking grievance redressal (general)",
+      "verified": true,
+      "tags": ["banking", "rbi", "ombudsman", "loan", "cheque", "nbfc"]
+    },
+    {
+      "id": "municipal-civic-overview",
+      "domain": "administrative",
+      "content": "Sanitation, illegal construction, and street infrastructure complaints are typically filed with the municipal corporation or urban local body through prescribed civic grievance channels.",
+      "source_name": "Urban local bodies — civic complaints (overview)",
+      "source_url": "https://www.india.gov.in/",
+      "law_type": "Procedure",
+      "section": "Municipal governance (general)",
+      "verified": true,
+      "tags": ["municipal", "sanitation", "local", "grievance", "government", "scheme"]
+    },
+    {
+      "id": "senior-maintenance-act-overview",
+      "domain": "family",
+      "content": "Maintenance tribunals under the Maintenance and Welfare of Parents and Senior Citizens Act provide a statutory route for maintenance applications subject to jurisdictional rules.",
+      "source_name": "Senior citizens maintenance (high-level)",
+      "source_url": "https://www.indiacode.nic.in/",
+      "law_type": "Act",
+      "section": "Maintenance tribunal (general)",
+      "verified": true,
+      "tags": ["senior", "maintenance", "tribunal", "family", "welfare"]
+    },
+    {
+      "id": "education-grievance-overview",
+      "domain": "administrative",
+      "content": "School and board-level grievances often start with the institution and the state education department; fee or service deficiency facets may overlap with consumer commission jurisdiction depending on facts.",
+      "source_name": "Education department grievances (overview)",
+      "source_url": "https://www.india.gov.in/",
+      "law_type": "Procedure",
+      "section": "Institutional grievance (general)",
+      "verified": true,
+      "tags": ["education", "school", "board", "university", "grievance"]
+    },
+    {
+      "id": "dv-act-protection-overview",
+      "domain": "family",
+      "content": "Domestic violence remedies include protection orders, residence orders, and monetary reliefs through magistrates; Protection Officers assist with applications under the DV Act framework.",
+      "source_name": "Protection of Women from Domestic Violence Act (overview)",
+      "source_url": "https://www.indiacode.nic.in/",
+      "law_type": "Act",
+      "section": "Protection Officer / reliefs (general)",
+      "verified": true,
+      "tags": ["women", "family", "dv", "protection", "custody"]
+    }
+  ]
+}

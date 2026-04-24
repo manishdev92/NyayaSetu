@@ -1,0 +1,18 @@
+{
+  "varanasi": {
+    "labour": {
+      "name": "Labour Commissioner Office, Varanasi",
+      "address": "District Labour Office, Varanasi, Uttar Pradesh",
+      "phone": "",
+      "email": ""
+    }
+  },
+  "delhi": {
+    "labour": {
+      "name": "Labour Department, Delhi",
+      "address": "Govt of NCT Delhi Labour Office",
+      "phone": "",
+      "email": ""
+    }
+  }
+}

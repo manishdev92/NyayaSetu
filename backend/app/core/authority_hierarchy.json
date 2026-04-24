@@ -1,0 +1,172 @@
+{
+  "criminal_police": {
+    "steps": [
+      {
+        "order": 1,
+        "label": "Local police station (SHO)",
+        "description_template": "Register a written complaint or FIR for cognizable offences. Confirm which station has territorial jurisdiction for {district} on the official state police portal.",
+        "department_key": null
+      },
+      {
+        "order": 2,
+        "label": "Superintendent of Police (SP)",
+        "description_template": "Escalate if the station refuses to register a cognizable FIR without lawful grounds, or if investigation is unreasonably delayed. Follow official circulars and written representations only.",
+        "department_key": null
+      },
+      {
+        "order": 3,
+        "label": "Judicial remedies (where legally advised)",
+        "description_template": "Where facts support it, consult a qualified advocate about judicial routes (for example magistrate complaints) using India Code and official court information — not social media summaries.",
+        "department_key": null
+      }
+    ]
+  },
+  "cyber_fraud": {
+    "steps": [
+      {
+        "order": 1,
+        "label": "National Cyber Crime Reporting Portal",
+        "description_template": "Report cyber fraud and online scams through the official Ministry of Home Affairs cybercrime portal. Preserve screenshots, transaction IDs, and bank timelines before filing.",
+        "department_key": null
+      },
+      {
+        "order": 2,
+        "label": "Local cyber police / economic offences wing",
+        "description_template": "Follow up with the cyber cell or police station handling {district} matters as directed on the portal or by the helpline. Carry printouts of your online report.",
+        "department_key": null
+      },
+      {
+        "order": 3,
+        "label": "Bank / wallet dispute window",
+        "description_template": "Immediately use official banking channels (branch, toll-free, or in-app dispute) for unauthorised debits; keep reference numbers for the police complaint.",
+        "department_key": null
+      }
+    ]
+  },
+  "salary_issue": {
+    "steps": [
+      {
+        "order": 1,
+        "label": "Labour authority (conciliation / inspection)",
+        "description_template": "Approach the district labour office or prescribed authority for unpaid wages, PF, gratuity, or wrongful termination under applicable labour laws. Use only official labour department portals for {district}.",
+        "department_key": "labour"
+      },
+      {
+        "order": 2,
+        "label": "Written representation to employer",
+        "description_template": "Send a dated written representation with pay slips, appointment letter, and bank statements via registered post or official email as per your employment records.",
+        "department_key": null
+      },
+      {
+        "order": 3,
+        "label": "Tribunal or civil forum (where applicable)",
+        "description_template": "If conciliation fails or the dispute falls outside a labour officer’s scope, confirm the correct tribunal or civil court from official government legal services or a qualified advocate.",
+        "department_key": null
+      }
+    ]
+  },
+  "consumer_issue": {
+    "steps": [
+      {
+        "order": 1,
+        "label": "Seller / service provider grievance desk",
+        "description_template": "Raise a written complaint with the brand’s official grievance officer contact published on invoices or websites. Keep delivery proofs and warranty documents.",
+        "department_key": null
+      },
+      {
+        "order": 2,
+        "label": "District Consumer Commission (e-daakhil)",
+        "description_template": "File or prepare a consumer complaint through the official e-daakhil portal for {district}, with bills and correspondence. Verify filing fees and pecuniary limits on the commission’s official site.",
+        "department_key": null
+      },
+      {
+        "order": 3,
+        "label": "State consumer commission (appeal route)",
+        "description_template": "If an order is passed against you or you need an appeal, confirm timelines and fees only from official consumer commission notifications or India Code.",
+        "department_key": null
+      }
+    ]
+  },
+  "civil_dispute": {
+    "steps": [
+      {
+        "order": 1,
+        "label": "Pre-litigation notice (where appropriate)",
+        "description_template": "Many civil disputes start with a legal notice through a qualified advocate. Do not rely on template tone alone — facts and limitation periods matter.",
+        "department_key": null
+      },
+      {
+        "order": 2,
+        "label": "Correct civil court / revenue forum",
+        "description_template": "Identify pecuniary jurisdiction and territorial jurisdiction for {district} using official court websites or district administration portals — not generic blog posts.",
+        "department_key": null
+      },
+      {
+        "order": 3,
+        "label": "Mediation / Lok Adalat (optional)",
+        "description_template": "Explore court-annexed mediation or legal services authority programmes through official court or DLSA channels when suitable.",
+        "department_key": null
+      }
+    ]
+  },
+  "civic_local": {
+    "steps": [
+      {
+        "order": 1,
+        "label": "Municipal corporation / nagar palika",
+        "description_template": "Report civic issues (roads, drains, sanitation) through the official municipal portal or ward office for {district}. Obtain a complaint reference number.",
+        "department_key": null
+      },
+      {
+        "order": 2,
+        "label": "District magistrate / collector grievance (where applicable)",
+        "description_template": "Some civic failures may be escalated through official district administration grievance mechanisms — confirm the current channel on the district’s .gov.in site.",
+        "department_key": null
+      },
+      {
+        "order": 3,
+        "label": "Public representatives (informational)",
+        "description_template": "Local elected representatives may forward complaints to departments; this does not replace the statutory municipal or revenue route.",
+        "department_key": null
+      }
+    ]
+  },
+  "rti_grievance": {
+    "steps": [
+      {
+        "order": 1,
+        "label": "Identify the public information officer (PIO)",
+        "description_template": "Locate the correct PIO and fee rules on the official RTI portal or the department’s .gov.in site for the office that holds the information.",
+        "department_key": null
+      },
+      {
+        "order": 2,
+        "label": "File RTI in prescribed format",
+        "description_template": "Submit a concise application with fee proof; avoid vague questions. For {district}, use the department’s notified submission mode (online or counter).",
+        "department_key": null
+      },
+      {
+        "order": 3,
+        "label": "First appeal / complaint (if needed)",
+        "description_template": "If the reply is missing or unsatisfactory, follow the official first appeal route to the appellate authority within the statutory period.",
+        "department_key": null
+      }
+    ]
+  },
+  "general_issue": {
+    "steps": [
+      {
+        "order": 1,
+        "label": "Confirm the correct department",
+        "description_template": "Use official .gov.in portals for {district} to identify whether the issue is police, labour, consumer, revenue, or municipal — avoid guessing from social media.",
+        "department_key": null
+      },
+      {
+        "order": 2,
+        "label": "Collect documents and timelines",
+        "description_template": "Prepare dated evidence (messages, contracts, bills) and note limitation periods from primary legal sources or a qualified advocate.",
+        "department_key": null
+      }
+    ]
+  }
+}

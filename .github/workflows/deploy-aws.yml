@@ -1,0 +1,78 @@
+# NS-DEPLOY-01 — build images, push to ECR, trigger App Runner (OIDC).
+# Run manually until GitHub is configured (see infra/README.md).
+name: Deploy AWS
+on:
+  workflow_dispatch:
+    inputs:
+      aws_region:
+        description: "AWS region (e.g. ap-south-1)"
+        required: false
+        type: string
+        default: "ap-south-1"
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: ${{ github.event.inputs.aws_region || 'ap-south-1' }}
+  ECR_API_REPOSITORY: nyayasetu-api
+  ECR_WEB_REPOSITORY: nyayasetu-web
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set registry URL
+        id: ecr
+        run: |
+          ACCOUNT=$(aws sts get-caller-identity --query Account --output text)
+          echo "registry=${ACCOUNT}.dkr.ecr.${AWS_REGION}.amazonaws.com" >> "$GITHUB_OUTPUT"
+
+      - name: Build & push API
+        env:
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build -t "${REGISTRY}/${ECR_API_REPOSITORY}:${IMAGE_TAG}" -t "${REGISTRY}/${ECR_API_REPOSITORY}:latest" backend
+          docker push "${REGISTRY}/${ECR_API_REPOSITORY}:${IMAGE_TAG}"
+          docker push "${REGISTRY}/${ECR_API_REPOSITORY}:latest"
+
+      - name: Start API App Runner deployment
+        env:
+          ARN: ${{ vars.AWS_APPRUNNER_API_SERVICE_ARN }}
+        run: |
+          test -n "$ARN" || (echo "Add repo variable AWS_APPRUNNER_API_SERVICE_ARN (from terraform output api_service_arn)" && exit 1)
+          aws apprunner start-deployment --service-arn "$ARN" --region "$AWS_REGION"
+
+      - name: Build & push Web
+        env:
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+          NEXT_PUBLIC_API_URL: ${{ secrets.NEXT_PUBLIC_API_URL }}
+        run: |
+          test -n "$NEXT_PUBLIC_API_URL" || (echo "Add repo secret NEXT_PUBLIC_API_URL (HTTPS API URL)" && exit 1)
+          docker build \
+            --build-arg "NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}" \
+            -t "${REGISTRY}/${ECR_WEB_REPOSITORY}:${IMAGE_TAG}" \
+            -t "${REGISTRY}/${ECR_WEB_REPOSITORY}:latest" \
+            frontend
+          docker push "${REGISTRY}/${ECR_WEB_REPOSITORY}:${IMAGE_TAG}"
+          docker push "${REGISTRY}/${ECR_WEB_REPOSITORY}:latest"
+
+      - name: Start Web App Runner deployment
+        env:
+          ARN: ${{ vars.AWS_APPRUNNER_WEB_SERVICE_ARN }}
+        run: |
+          test -n "$ARN" || (echo "Add repo variable AWS_APPRUNNER_WEB_SERVICE_ARN" && exit 1)
+          aws apprunner start-deployment --service-arn "$ARN" --region "$AWS_REGION"

@@ -1,0 +1,71 @@
+{
+  "schema_version": 1,
+  "last_content_review": "2026-04-22",
+  "disclaimer": "These entries are a triage aid only. Helplines and routing change by state — verify on the official state police, health, disaster, or MHA portal before acting.",
+  "national": [
+    {
+      "category": "unified_emergency",
+      "label": "Single emergency number (ERSS)",
+      "numbers": ["112"],
+      "notes": "Pan-India emergency access; may route to police, fire, or ambulance depending on jurisdiction.",
+      "source_url": "https://www.mha.gov.in/en/commoncontent/india-national-emergency-number-112"
+    },
+    {
+      "category": "police",
+      "label": "Police (legacy toll-free, where still published)",
+      "numbers": ["100"],
+      "notes": "Many states route legacy numbers into 112 — prefer 112 if unsure.",
+      "source_url": "https://www.mha.gov.in/en/commoncontent/india-national-emergency-number-112"
+    },
+    {
+      "category": "fire",
+      "label": "Fire emergency",
+      "numbers": ["101"],
+      "notes": "Commonly listed alongside 112; confirm with your state fire / disaster portal.",
+      "source_url": "https://ndma.gov.in/"
+    },
+    {
+      "category": "ambulance",
+      "label": "Ambulance / medical (state schemes vary)",
+      "numbers": ["108"],
+      "notes": "108 is widely advertised in several states; 112 may also dispatch medical help — verify locally.",
+      "source_url": "https://www.mohfw.gov.in/"
+    },
+    {
+      "category": "women_safety",
+      "label": "Women in distress (national helpline)",
+      "numbers": ["1091"],
+      "notes": "Published as national women helpline — confirm on Ministry of Women & Child Development / state portal.",
+      "source_url": "https://wcd.nic.in/"
+    },
+    {
+      "category": "child_protection",
+      "label": "Childline India",
+      "numbers": ["1098"],
+      "notes": "National child helpline — verify on Childline India / NCPCR official pages.",
+      "source_url": "https://wcd.nic.in/"
+    },
+    {
+      "category": "cybercrime",
+      "label": "National cybercrime helpline",
+      "numbers": ["1930"],
+      "notes": "For online financial fraud reporting — also use cybercrime.gov.in portal.",
+      "source_url": "https://www.cybercrime.gov.in/"
+    },
+    {
+      "category": "human_trafficking",
+      "label": "Anti human trafficking helpline (commonly listed)",
+      "numbers": ["155260"],
+      "notes": "Widely cited nationally — confirm on MHA / MWCD official advisories.",
+      "source_url": "https://www.mha.gov.in/"
+    },
+    {
+      "category": "disaster",
+      "label": "Disaster / SDMA public helpline (commonly listed)",
+      "numbers": ["1078"],
+      "notes": "Often referenced for state disaster control rooms — confirm with your State Disaster Management Authority.",
+      "source_url": "https://ndma.gov.in/"
+    }
+  ],
+  "states": {}
+}

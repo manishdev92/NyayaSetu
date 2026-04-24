@@ -1,0 +1,1006 @@
+{
+  "version": 1,
+  "description": "NyayaSetu deterministic classifier regression set (100 rows)",
+  "cases": [
+    {
+      "id": 1,
+      "text": "my phone was stolen at the market",
+      "issue_type": "police",
+      "domain": "criminal",
+      "router_intent": "criminal_police",
+      "sub_type": "theft",
+      "severity": "high",
+      "jurisdiction_type": "district"
+    },
+    {
+      "id": 2,
+      "text": "bike chori ho gayi kal raat",
+      "issue_type": "police",
+      "domain": "criminal",
+      "router_intent": "criminal_police",
+      "sub_type": "theft",
+      "severity": "high",
+      "jurisdiction_type": "district"
+    },
+    {
+      "id": 3,
+      "text": "burglary at our shop CCTV available",
+      "issue_type": "police",
+      "domain": "criminal",
+      "router_intent": "criminal_police",
+      "sub_type": "theft",
+      "severity": "high",
+      "jurisdiction_type": "district"
+    },
+    {
+      "id": 4,
+      "text": "my son has been missing since Tuesday evening",
+      "issue_type": "police",
+      "domain": "criminal",
+      "router_intent": "criminal_police",
+      "sub_type": "missing_person",
+      "severity": "high",
+      "jurisdiction_type": "district"
+    },
+    {
+      "id": 5,
+      "text": "person missing report needed kidnapping suspected",
+      "issue_type": "police",
+      "domain": "criminal",
+      "router_intent": "criminal_police",
+      "sub_type": "missing_person",
+      "severity": "high",
+      "jurisdiction_type": "district"
+    },
+    {
+      "id": 6,
+      "text": "abduction case child missing from school gate",
+      "issue_type": "police",
+      "domain": "criminal",
+      "router_intent": "criminal_police",
+      "sub_type": "missing_person",
+      "severity": "high",
+      "jurisdiction_type": "district"
+    },
+    {
+      "id": 7,
+      "text": "लापता person since last week",
+      "issue_type": "police",
+      "domain": "criminal",
+      "router_intent": "criminal_police",
+      "sub_type": "missing_person",
+      "severity": "high",
+      "jurisdiction_type": "district"
+    },
+    {
+      "id": 8,
+      "text": "sexual abuse at workplace need help pocso",
+      "issue_type": "police",
+      "domain": "criminal",
+      "router_intent": "criminal_police",
+      "sub_type": "sexual_offence",
+      "severity": "high",
+      "jurisdiction_type": "district"
+    },
+    {
+      "id": 9,
+      "text": "molestation complaint against neighbour",
+      "issue_type": "police",
+      "domain": "criminal",
+      "router_intent": "criminal_police",
+      "sub_type": "sexual_offence",
+      "severity": "high",
+      "jurisdiction_type": "district"
+    },
+    {
+      "id": 10,
+      "text": "I was assaulted by three persons",
+      "issue_type": "police",
+      "domain": "criminal",
+      "router_intent": "criminal_police",
+      "sub_type": "assault",
+      "severity": "high",
+      "jurisdiction_type": "district"
+    },
+    {
+      "id": 11,
+      "text": "battery and grievous hurt in fight",
+      "issue_type": "police",
+      "domain": "criminal",
+      "router_intent": "criminal_police",
+      "sub_type": "assault",
+      "severity": "high",
+      "jurisdiction_type": "district"
+    },
+    {
+      "id": 12,
+      "text": "acid attack survivor need legal steps",
+      "issue_type": "police",
+      "domain": "criminal",
+      "router_intent": "criminal_police",
+      "sub_type": "sexual_offence",
+      "severity": "high",
+      "jurisdiction_type": "district"
+    },
+    {
+      "id": 13,
+      "text": "attempt to murder FIR needed",
+      "issue_type": "police",
+      "domain": "criminal",
+      "router_intent": "criminal_police",
+      "sub_type": "attempt_to_murder",
+      "severity": "high",
+      "jurisdiction_type": "district"
+    },
+    {
+      "id": 14,
+      "text": "UPI fraud someone debited my account",
+      "issue_type": "cyber",
+      "domain": "cyber",
+      "router_intent": "cyber_fraud",
+      "sub_type": "upi_fraud",
+      "severity": "high",
+      "jurisdiction_type": "national"
+    },
+    {
+      "id": 15,
+      "text": "OTP scam on phone lost savings",
+      "issue_type": "cyber",
+      "domain": "cyber",
+      "router_intent": "cyber_fraud",
+      "sub_type": "otp_fraud",
+      "severity": "high",
+      "jurisdiction_type": "national"
+    },
+    {
+      "id": 16,
+      "text": "data breach company leaked my PAN",
+      "issue_type": "cyber",
+      "domain": "cyber",
+      "router_intent": "cyber_fraud",
+      "sub_type": "hacking",
+      "severity": "high",
+      "jurisdiction_type": "national"
+    },
+    {
+      "id": 17,
+      "text": "hacking of my email account",
+      "issue_type": "cyber",
+      "domain": "cyber",
+      "router_intent": "cyber_fraud",
+      "sub_type": "hacking",
+      "severity": "high",
+      "jurisdiction_type": "national"
+    },
+    {
+      "id": 18,
+      "text": "deepfake video circulated online",
+      "issue_type": "cyber",
+      "domain": "cyber",
+      "router_intent": "cyber_fraud",
+      "sub_type": "identity_theft",
+      "severity": "high",
+      "jurisdiction_type": "national"
+    },
+    {
+      "id": 19,
+      "text": "internet crime reporting cyber cell",
+      "issue_type": "cyber",
+      "domain": "cyber",
+      "router_intent": "cyber_fraud",
+      "sub_type": "cybercrime_general",
+      "severity": "high",
+      "jurisdiction_type": "national"
+    },
+    {
+      "id": 20,
+      "text": "online fraud investment portal cheated",
+      "issue_type": "cyber",
+      "domain": "cyber",
+      "router_intent": "cyber_fraud",
+      "sub_type": "cybercrime_general",
+      "severity": "high",
+      "jurisdiction_type": "national"
+    },
+    {
+      "id": 21,
+      "text": "police refused to register FIR despite complaint",
+      "issue_type": "police_oversight",
+      "domain": "police_complaint",
+      "router_intent": "police_oversight",
+      "sub_type": "police_not_registering_fir",
+      "severity": "high",
+      "jurisdiction_type": "district"
+    },
+    {
+      "id": 22,
+      "text": "no FIR taken police not registering",
+      "issue_type": "police_oversight",
+      "domain": "police_complaint",
+      "router_intent": "police_oversight",
+      "sub_type": "police_not_registering_fir",
+      "severity": "high",
+      "jurisdiction_type": "district"
+    },
+    {
+      "id": 23,
+      "text": "police misconduct at station humiliated",
+      "issue_type": "police_oversight",
+      "domain": "police_complaint",
+      "router_intent": "police_oversight",
+      "sub_type": "police_misconduct",
+      "severity": "high",
+      "jurisdiction_type": "district"
+    },
+    {
+      "id": 24,
+      "text": "FIR not registered for cheating case",
+      "issue_type": "police_oversight",
+      "domain": "police_complaint",
+      "router_intent": "police_oversight",
+      "sub_type": "police_not_registering_fir",
+      "severity": "high",
+      "jurisdiction_type": "district"
+    },
+    {
+      "id": 25,
+      "text": "salary not paid for 5 months employer factory",
+      "issue_type": "salary",
+      "domain": "labour",
+      "router_intent": "salary_issue",
+      "sub_type": "salary_not_paid",
+      "severity": "medium",
+      "jurisdiction_type": "district"
+    },
+    {
+      "id": 26,
+      "text": "wages unpaid construction labour",
+      "issue_type": "salary",
+      "domain": "labour",
+      "router_intent": "salary_issue",
+      "sub_type": "salary_not_paid",
+      "severity": "medium",
+      "jurisdiction_type": "district"
+    },
+    {
+      "id": 27,
+      "text": "EPFO PF not credited for one year",
+      "issue_type": "salary",
+      "domain": "labour",
+      "router_intent": "salary_issue",
+      "sub_type": "pf_issue",
+      "severity": "medium",
+      "jurisdiction_type": "district"
+    },
+    {
+      "id": 28,
+      "text": "provident fund withdrawal issue delay",
+      "issue_type": "salary",
+      "domain": "labour",
+      "router_intent": "salary_issue",
+      "sub_type": "pf_issue",
+      "severity": "medium",
+      "jurisdiction_type": "district"
+    },
+    {
+      "id": 29,
+      "text": "wrongful termination without notice period",
+      "issue_type": "salary",
+      "domain": "labour",
+      "router_intent": "salary_issue",
+      "sub_type": "wrongful_termination",
+      "severity": "medium",
+      "jurisdiction_type": "district"
+    },
+    {
+      "id": 30,
+      "text": "illegal termination during maternity",
+      "issue_type": "salary",
+      "domain": "labour",
+      "router_intent": "salary_issue",
+      "sub_type": "wrongful_termination",
+      "severity": "medium",
+      "jurisdiction_type": "district"
+    },
+    {
+      "id": 31,
+      "text": "gratuity not paid after resignation",
+      "issue_type": "salary",
+      "domain": "labour",
+      "router_intent": "salary_issue",
+      "sub_type": "salary_not_paid",
+      "severity": "medium",
+      "jurisdiction_type": "district"
+    },
+    {
+      "id": 32,
+      "text": "workplace harassment POSH committee not formed",
+      "issue_type": "salary",
+      "domain": "labour",
+      "router_intent": "salary_issue",
+      "sub_type": "workplace_harassment",
+      "severity": "medium",
+      "jurisdiction_type": "district"
+    },
+    {
+      "id": 33,
+      "text": "sexual harassment at work internal committee",
+      "issue_type": "salary",
+      "domain": "labour",
+      "router_intent": "salary_issue",
+      "sub_type": "workplace_harassment",
+      "severity": "medium",
+      "jurisdiction_type": "district"
+    },
+    {
+      "id": 34,
+      "text": "bonus denied as per employment contract",
+      "issue_type": "salary",
+      "domain": "labour",
+      "router_intent": "salary_issue",
+      "sub_type": "salary_not_paid",
+      "severity": "medium",
+      "jurisdiction_type": "district"
+    },
+    {
+      "id": 35,
+      "text": "company not paying salary and threatened to harm me if I complain",
+      "issue_type": "police",
+      "domain": "criminal",
+      "router_intent": "criminal_police",
+      "sub_type": "labour_with_threat",
+      "severity": "high",
+      "jurisdiction_type": "district"
+    },
+    {
+      "id": 36,
+      "text": "defective product mobile phone under warranty",
+      "issue_type": "consumer",
+      "domain": "consumer",
+      "router_intent": "consumer_issue",
+      "sub_type": "defective_product",
+      "severity": "medium",
+      "jurisdiction_type": "state"
+    },
+    {
+      "id": 37,
+      "text": "service deficiency hotel booking refund",
+      "issue_type": "consumer",
+      "domain": "consumer",
+      "router_intent": "consumer_issue",
+      "sub_type": "service_deficiency",
+      "severity": "medium",
+      "jurisdiction_type": "state"
+    },
+    {
+      "id": 38,
+      "text": "consumer complaint against airline CPA",
+      "issue_type": "consumer",
+      "domain": "consumer",
+      "router_intent": "consumer_issue",
+      "sub_type": "consumer_general",
+      "severity": "medium",
+      "jurisdiction_type": "state"
+    },
+    {
+      "id": 39,
+      "text": "refund not given for cancelled order",
+      "issue_type": "consumer",
+      "domain": "consumer",
+      "router_intent": "consumer_issue",
+      "sub_type": "consumer_general",
+      "severity": "medium",
+      "jurisdiction_type": "state"
+    },
+    {
+      "id": 40,
+      "text": "school fees too high exorbitant fees",
+      "issue_type": "consumer",
+      "domain": "consumer",
+      "router_intent": "consumer_issue",
+      "sub_type": "education_fees",
+      "severity": "medium",
+      "jurisdiction_type": "state"
+    },
+    {
+      "id": 41,
+      "text": "warranty claim rejected for fridge",
+      "issue_type": "consumer",
+      "domain": "consumer",
+      "router_intent": "consumer_issue",
+      "sub_type": "defective_product",
+      "severity": "medium",
+      "jurisdiction_type": "state"
+    },
+    {
+      "id": 42,
+      "text": "poor service not provided as promised",
+      "issue_type": "general",
+      "domain": "general",
+      "router_intent": "general_issue",
+      "sub_type": "general_guidance",
+      "severity": "low",
+      "jurisdiction_type": "district"
+    },
+    {
+      "id": 43,
+      "text": "wrong e-challan issued for signal violation",
+      "issue_type": "traffic",
+      "domain": "traffic",
+      "router_intent": "traffic_violation",
+      "sub_type": "challan_dispute",
+      "severity": "low",
+      "jurisdiction_type": "local"
+    },
+    {
+      "id": 44,
+      "text": "DL suspended want appeal RTO",
+      "issue_type": "traffic",
+      "domain": "traffic",
+      "router_intent": "traffic_violation",
+      "sub_type": "licence_issue",
+      "severity": "low",
+      "jurisdiction_type": "local"
+    },
+    {
+      "id": 45,
+      "text": "driving licence renewal issue at RTO",
+      "issue_type": "traffic",
+      "domain": "traffic",
+      "router_intent": "traffic_violation",
+      "sub_type": "traffic_general",
+      "severity": "low",
+      "jurisdiction_type": "local"
+    },
+    {
+      "id": 46,
+      "text": "parking violation ticket unfair",
+      "issue_type": "traffic",
+      "domain": "traffic",
+      "router_intent": "traffic_violation",
+      "sub_type": "traffic_general",
+      "severity": "low",
+      "jurisdiction_type": "local"
+    },
+    {
+      "id": 47,
+      "text": "motor accident claim procedure MACT",
+      "issue_type": "traffic",
+      "domain": "traffic",
+      "router_intent": "traffic_violation",
+      "sub_type": "accident",
+      "severity": "low",
+      "jurisdiction_type": "local"
+    },
+    {
+      "id": 48,
+      "text": "traffic police stopped without reason challan",
+      "issue_type": "traffic",
+      "domain": "traffic",
+      "router_intent": "traffic_violation",
+      "sub_type": "challan_dispute",
+      "severity": "low",
+      "jurisdiction_type": "local"
+    },
+    {
+      "id": 49,
+      "text": "divorce petition and alimony dispute",
+      "issue_type": "family",
+      "domain": "family",
+      "router_intent": "family_matters",
+      "sub_type": "divorce",
+      "severity": "medium",
+      "jurisdiction_type": "district"
+    },
+    {
+      "id": 50,
+      "text": "child custody battle visitation rights",
+      "issue_type": "family",
+      "domain": "family",
+      "router_intent": "family_matters",
+      "sub_type": "child_custody",
+      "severity": "medium",
+      "jurisdiction_type": "district"
+    },
+    {
+      "id": 51,
+      "text": "domestic violence 498a help needed",
+      "issue_type": "family",
+      "domain": "family",
+      "router_intent": "family_matters",
+      "sub_type": "domestic_violence",
+      "severity": "medium",
+      "jurisdiction_type": "district"
+    },
+    {
+      "id": 52,
+      "text": "maintenance under section 125 crpc",
+      "issue_type": "family",
+      "domain": "family",
+      "router_intent": "family_matters",
+      "sub_type": "maintenance",
+      "severity": "medium",
+      "jurisdiction_type": "district"
+    },
+    {
+      "id": 53,
+      "text": "spousal maintenance not paid",
+      "issue_type": "family",
+      "domain": "family",
+      "router_intent": "family_matters",
+      "sub_type": "maintenance",
+      "severity": "medium",
+      "jurisdiction_type": "district"
+    },
+    {
+      "id": 54,
+      "text": "family court jurisdiction divorce",
+      "issue_type": "family",
+      "domain": "family",
+      "router_intent": "family_matters",
+      "sub_type": "divorce",
+      "severity": "medium",
+      "jurisdiction_type": "district"
+    },
+    {
+      "id": 55,
+      "text": "mutation of land record khasra correction",
+      "issue_type": "land",
+      "domain": "government",
+      "router_intent": "land_dispute",
+      "sub_type": "mutation_issue",
+      "severity": "medium",
+      "jurisdiction_type": "district"
+    },
+    {
+      "id": 56,
+      "text": "tehsildar not updating jamabandi",
+      "issue_type": "land",
+      "domain": "government",
+      "router_intent": "land_dispute",
+      "sub_type": "mutation_issue",
+      "severity": "medium",
+      "jurisdiction_type": "district"
+    },
+    {
+      "id": 57,
+      "text": "boundary dispute survey pillar",
+      "issue_type": "land",
+      "domain": "government",
+      "router_intent": "land_dispute",
+      "sub_type": "land_records",
+      "severity": "medium",
+      "jurisdiction_type": "district"
+    },
+    {
+      "id": 58,
+      "text": "title deed verification SDM office",
+      "issue_type": "land",
+      "domain": "government",
+      "router_intent": "land_dispute",
+      "sub_type": "land_records",
+      "severity": "medium",
+      "jurisdiction_type": "district"
+    },
+    {
+      "id": 59,
+      "text": "birth certificate tehsil SDM collector office delay",
+      "issue_type": "land",
+      "domain": "government",
+      "router_intent": "land_dispute",
+      "sub_type": "certificate_issue",
+      "severity": "medium",
+      "jurisdiction_type": "district"
+    },
+    {
+      "id": 60,
+      "text": "property dispute with brother ancestral house",
+      "issue_type": "civil_dispute",
+      "domain": "civil",
+      "router_intent": "civil_dispute",
+      "sub_type": "property_dispute",
+      "severity": "medium",
+      "jurisdiction_type": "state"
+    },
+    {
+      "id": 61,
+      "text": "tenant not paying rent eviction lease",
+      "issue_type": "civil_dispute",
+      "domain": "civil",
+      "router_intent": "civil_dispute",
+      "sub_type": "rent_issue",
+      "severity": "medium",
+      "jurisdiction_type": "state"
+    },
+    {
+      "id": 62,
+      "text": "landlord harassment rent issue",
+      "issue_type": "civil_dispute",
+      "domain": "civil",
+      "router_intent": "civil_dispute",
+      "sub_type": "rent_issue",
+      "severity": "medium",
+      "jurisdiction_type": "state"
+    },
+    {
+      "id": 63,
+      "text": "breach of contract vendor did not supply",
+      "issue_type": "civil_dispute",
+      "domain": "civil",
+      "router_intent": "civil_dispute",
+      "sub_type": "contract_dispute",
+      "severity": "medium",
+      "jurisdiction_type": "state"
+    },
+    {
+      "id": 64,
+      "text": "money recovery suit against debtor",
+      "issue_type": "civil_dispute",
+      "domain": "civil",
+      "router_intent": "civil_dispute",
+      "sub_type": "money_recovery",
+      "severity": "medium",
+      "jurisdiction_type": "state"
+    },
+    {
+      "id": 65,
+      "text": "civil suit for partition of property",
+      "issue_type": "civil_dispute",
+      "domain": "civil",
+      "router_intent": "civil_dispute",
+      "sub_type": "contract_dispute",
+      "severity": "medium",
+      "jurisdiction_type": "state"
+    },
+    {
+      "id": 66,
+      "text": "specific performance of agreement to sell",
+      "issue_type": "civil_dispute",
+      "domain": "civil",
+      "router_intent": "civil_dispute",
+      "sub_type": "contract_dispute",
+      "severity": "medium",
+      "jurisdiction_type": "state"
+    },
+    {
+      "id": 67,
+      "text": "contract dispute software services",
+      "issue_type": "civil_dispute",
+      "domain": "civil",
+      "router_intent": "civil_dispute",
+      "sub_type": "contract_dispute",
+      "severity": "medium",
+      "jurisdiction_type": "state"
+    },
+    {
+      "id": 68,
+      "text": "NCLT insolvency petition against company",
+      "issue_type": "corporate",
+      "domain": "civil",
+      "router_intent": "share_dispute",
+      "sub_type": "share_dispute",
+      "severity": "medium",
+      "jurisdiction_type": "state"
+    },
+    {
+      "id": 69,
+      "text": "shareholder oppression minority rights",
+      "issue_type": "corporate",
+      "domain": "civil",
+      "router_intent": "share_dispute",
+      "sub_type": "share_dispute",
+      "severity": "medium",
+      "jurisdiction_type": "state"
+    },
+    {
+      "id": 70,
+      "text": "board of directors dispute private limited",
+      "issue_type": "corporate",
+      "domain": "civil",
+      "router_intent": "share_dispute",
+      "sub_type": "share_dispute",
+      "severity": "medium",
+      "jurisdiction_type": "state"
+    },
+    {
+      "id": 71,
+      "text": "RBI ombudsman banking complaint not resolved",
+      "issue_type": "financial",
+      "domain": "financial",
+      "router_intent": "banking_ombudsman",
+      "sub_type": "banking_dispute",
+      "severity": "medium",
+      "jurisdiction_type": "state"
+    },
+    {
+      "id": 72,
+      "text": "loan harassment recovery agents abusive calls",
+      "issue_type": "financial",
+      "domain": "financial",
+      "router_intent": "banking_ombudsman",
+      "sub_type": "loan_harassment",
+      "severity": "medium",
+      "jurisdiction_type": "state"
+    },
+    {
+      "id": 73,
+      "text": "cheque bounce notice bank not responding",
+      "issue_type": "financial",
+      "domain": "financial",
+      "router_intent": "banking_ombudsman",
+      "sub_type": "banking_dispute",
+      "severity": "medium",
+      "jurisdiction_type": "state"
+    },
+    {
+      "id": 74,
+      "text": "insurance claim reject health policy",
+      "issue_type": "financial",
+      "domain": "financial",
+      "router_intent": "banking_ombudsman",
+      "sub_type": "banking_dispute",
+      "severity": "medium",
+      "jurisdiction_type": "state"
+    },
+    {
+      "id": 75,
+      "text": "NBFC harassment for EMI default",
+      "issue_type": "financial",
+      "domain": "financial",
+      "router_intent": "banking_ombudsman",
+      "sub_type": "loan_harassment",
+      "severity": "medium",
+      "jurisdiction_type": "state"
+    },
+    {
+      "id": 76,
+      "text": "RTI application PIO not replied in time",
+      "issue_type": "rti",
+      "domain": "rti",
+      "router_intent": "rti_grievance",
+      "sub_type": "rti_application",
+      "severity": "medium",
+      "jurisdiction_type": "state"
+    },
+    {
+      "id": 77,
+      "text": "first appeal RTI information commission",
+      "issue_type": "rti",
+      "domain": "rti",
+      "router_intent": "rti_grievance",
+      "sub_type": "rti_application",
+      "severity": "medium",
+      "jurisdiction_type": "state"
+    },
+    {
+      "id": 78,
+      "text": "public information officer denied file",
+      "issue_type": "rti",
+      "domain": "rti",
+      "router_intent": "rti_grievance",
+      "sub_type": "information_denied",
+      "severity": "medium",
+      "jurisdiction_type": "state"
+    },
+    {
+      "id": 79,
+      "text": "information denied without reasons RTI",
+      "issue_type": "rti",
+      "domain": "rti",
+      "router_intent": "rti_grievance",
+      "sub_type": "information_denied",
+      "severity": "medium",
+      "jurisdiction_type": "state"
+    },
+    {
+      "id": 80,
+      "text": "garbage not collected municipal corporation ward",
+      "issue_type": "civic",
+      "domain": "civic",
+      "router_intent": "civic_local",
+      "sub_type": "garbage_issue",
+      "severity": "medium",
+      "jurisdiction_type": "local"
+    },
+    {
+      "id": 81,
+      "text": "illegal construction encroachment footpath civic",
+      "issue_type": "civic",
+      "domain": "civic",
+      "router_intent": "civic_local",
+      "sub_type": "illegal_construction",
+      "severity": "medium",
+      "jurisdiction_type": "local"
+    },
+    {
+      "id": 82,
+      "text": "stray dogs sanitation issue municipal",
+      "issue_type": "civic",
+      "domain": "civic",
+      "router_intent": "civic_local",
+      "sub_type": "garbage_issue",
+      "severity": "medium",
+      "jurisdiction_type": "local"
+    },
+    {
+      "id": 83,
+      "text": "street lights not working civic issue",
+      "issue_type": "civic",
+      "domain": "civic",
+      "router_intent": "civic_local",
+      "sub_type": "streetlight_issue",
+      "severity": "medium",
+      "jurisdiction_type": "local"
+    },
+    {
+      "id": 84,
+      "text": "admission fraud college took fees no seat",
+      "issue_type": "education",
+      "domain": "education",
+      "router_intent": "education_dispute",
+      "sub_type": "admission_fraud",
+      "severity": "medium",
+      "jurisdiction_type": "state"
+    },
+    {
+      "id": 85,
+      "text": "certificate withheld marksheet board",
+      "issue_type": "education",
+      "domain": "education",
+      "router_intent": "education_dispute",
+      "sub_type": "certificate_withheld",
+      "severity": "medium",
+      "jurisdiction_type": "state"
+    },
+    {
+      "id": 86,
+      "text": "school not giving transfer certificate",
+      "issue_type": "education",
+      "domain": "education",
+      "router_intent": "education_dispute",
+      "sub_type": "certificate_withheld",
+      "severity": "medium",
+      "jurisdiction_type": "state"
+    },
+    {
+      "id": 87,
+      "text": "college withheld degree certificate",
+      "issue_type": "education",
+      "domain": "education",
+      "router_intent": "education_dispute",
+      "sub_type": "certificate_withheld",
+      "severity": "medium",
+      "jurisdiction_type": "state"
+    },
+    {
+      "id": 88,
+      "text": "women helpline 1091 domestic crisis",
+      "issue_type": "women_child",
+      "domain": "women_child",
+      "router_intent": "women_child_route",
+      "sub_type": "harassment",
+      "severity": "medium",
+      "jurisdiction_type": "district"
+    },
+    {
+      "id": 89,
+      "text": "child welfare CWC inquiry needed",
+      "issue_type": "women_child",
+      "domain": "women_child",
+      "router_intent": "women_child_route",
+      "sub_type": "harassment",
+      "severity": "medium",
+      "jurisdiction_type": "district"
+    },
+    {
+      "id": 90,
+      "text": "childline 1098 missing child support",
+      "issue_type": "police",
+      "domain": "criminal",
+      "router_intent": "criminal_police",
+      "sub_type": "missing_person",
+      "severity": "high",
+      "jurisdiction_type": "district"
+    },
+    {
+      "id": 91,
+      "text": "child abuse reporting support",
+      "issue_type": "women_child",
+      "domain": "women_child",
+      "router_intent": "women_child_route",
+      "sub_type": "abuse",
+      "severity": "medium",
+      "jurisdiction_type": "district"
+    },
+    {
+      "id": 92,
+      "text": "senior citizen maintenance tribunal 1090",
+      "issue_type": "senior_citizen",
+      "domain": "senior_citizen",
+      "router_intent": "senior_maintenance",
+      "sub_type": "maintenance_claim",
+      "severity": "medium",
+      "jurisdiction_type": "district"
+    },
+    {
+      "id": 93,
+      "text": "elder abuse in family maintenance",
+      "issue_type": "senior_citizen",
+      "domain": "senior_citizen",
+      "router_intent": "senior_maintenance",
+      "sub_type": "maintenance_claim",
+      "severity": "medium",
+      "jurisdiction_type": "district"
+    },
+    {
+      "id": 94,
+      "text": "",
+      "issue_type": "general",
+      "domain": "general",
+      "router_intent": "general_issue",
+      "sub_type": "unspecified",
+      "severity": "low",
+      "jurisdiction_type": "district"
+    },
+    {
+      "id": 95,
+      "text": "general guidance about legal rights in India",
+      "issue_type": "general",
+      "domain": "general",
+      "router_intent": "general_issue",
+      "sub_type": "general_guidance",
+      "severity": "low",
+      "jurisdiction_type": "district"
+    },
+    {
+      "id": 96,
+      "text": "something illegal happened not sure what",
+      "issue_type": "police",
+      "domain": "criminal",
+      "router_intent": "criminal_police",
+      "sub_type": "general_criminal",
+      "severity": "medium",
+      "jurisdiction_type": "district"
+    },
+    {
+      "id": 97,
+      "text": "cheating scam duped online but not cyber keywords",
+      "issue_type": "cyber",
+      "domain": "cyber",
+      "router_intent": "cyber_fraud",
+      "sub_type": "cybercrime_general",
+      "severity": "high",
+      "jurisdiction_type": "national"
+    },
+    {
+      "id": 98,
+      "text": "theft chori report at police station",
+      "issue_type": "police",
+      "domain": "criminal",
+      "router_intent": "criminal_police",
+      "sub_type": "theft",
+      "severity": "high",
+      "jurisdiction_type": "district"
+    },
+    {
+      "id": 99,
+      "text": "large scale fraud ponzi multi crore scam investor",
+      "issue_type": "fraud",
+      "domain": "criminal",
+      "router_intent": "fraud_general",
+      "sub_type": "fraud_general",
+      "severity": "high",
+      "jurisdiction_type": "state"
+    },
+    {
+      "id": 100,
+      "text": "identity theft morphing profile online",
+      "issue_type": "cyber",
+      "domain": "cyber",
+      "router_intent": "cyber_fraud",
+      "sub_type": "identity_theft",
+      "severity": "high",
+      "jurisdiction_type": "national"
+    }
+  ]
+}

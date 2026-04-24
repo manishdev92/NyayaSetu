@@ -1,0 +1,24 @@
+backend/.venv/
+backend/.env
+backend/**/__pycache__/
+frontend/.env.local
+frontend/.next/
+frontend/node_modules/
+backend/logs/llm_fallback_cases.json
+backend/logs/authority_mismatch.json
+backend/var/
+
+# Terraform
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraformrc
+terraform.rc

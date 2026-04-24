@@ -1,0 +1,131 @@
+{
+  "emergency_fir_short": {
+    "title": "Emergency FIR Draft",
+    "content": [
+      "To,",
+      "The Station House Officer,",
+      "{{police_station}}, {{district}}",
+      "",
+      "Subject: Urgent FIR request regarding violent incident",
+      "",
+      "Sir/Madam,",
+      "",
+      "This is to inform you that a violent incident has occurred at {{location}}.",
+      "There has been a fight between individuals, and injuries have been reported.",
+      "",
+      "The situation is serious and requires immediate police intervention.",
+      "",
+      "I request you to kindly register an FIR and take urgent action.",
+      "",
+      "Sincerely,",
+      "{{name}}"
+    ]
+  },
+  "emergency_fir_contextual": {
+    "title": "Context-aware emergency FIR",
+    "content": [
+      "To,",
+      "The Station House Officer,",
+      "{{police_station}}, {{district}}",
+      "",
+      "Subject: Urgent FIR request regarding violent incident",
+      "",
+      "Sir/Madam,",
+      "",
+      "{{incident_line}}",
+      "",
+      "The situation is serious and requires immediate police intervention.",
+      "",
+      "I request you to kindly register an FIR and take urgent action.",
+      "",
+      "Sincerely,",
+      "{{name}}"
+    ]
+  },
+  "emergency_fir_short_hi": {
+    "title": "Emergency FIR Draft (Hindi)",
+    "content": [
+      "प्रति,",
+      "थाना प्रभारी,",
+      "{{police_station}}, {{district}}",
+      "",
+      "विषय: हिंसक घटना हेतु FIR दर्ज कराने का अनुरोध",
+      "",
+      "महोदय / महोदया,",
+      "",
+      "सूचित करना है कि {{location}} पर हिंसक घटना हुई।",
+      "व्यक्तियों के बीच झगड़ा हुआ और घायलों की सूचना है।",
+      "",
+      "स्थिति गंभीर है और तत्काल पुलिस हस्तक्षेप आवश्यक है।",
+      "",
+      "कृपया विधि के अनुसार FIR दर्ज कर तत्काल कार्रवाई करें।",
+      "",
+      "धन्यवाद सहित,",
+      "{{name}}"
+    ]
+  },
+  "emergency_fir_short_hi_latn": {
+    "title": "Emergency FIR Draft (Roman Hindi)",
+    "content": [
+      "Prati,",
+      "Thanadhikari,",
+      "{{police_station}}, {{district}}",
+      "",
+      "Vishay: Hinsak ghatna hetu FIR darj karane ka anurodh",
+      "",
+      "Mahoday / Mahodaya,",
+      "",
+      "Suchit karna hai ki {{location}} par hinsak ghatna hui.",
+      "Vyaktiyon ke beech jhagda hua aur ghayalon ki suchna hai.",
+      "",
+      "Sthiti gambhir hai aur turant police hastakshshep avashyak hai.",
+      "",
+      "Kripya vidhi ke anusar FIR darj kar turant kararvayi karen.",
+      "",
+      "Dhanyavad sahit,",
+      "{{name}}"
+    ]
+  },
+  "emergency_fir_contextual_hi": {
+    "title": "Context-aware emergency FIR (Hindi)",
+    "content": [
+      "प्रति,",
+      "थाना प्रभारी,",
+      "{{police_station}}, {{district}}",
+      "",
+      "विषय: हिंसक घटना के संबंध में FIR दर्ज कराने हेतु अनुरोध",
+      "",
+      "महोदय / महोदया,",
+      "",
+      "{{incident_line}}",
+      "",
+      "स्थिति गंभीर है और तत्काल पुलिस हस्तक्षेप आवश्यक है।",
+      "",
+      "कृपया विधि के अनुसार FIR दर्ज कर आवश्यक कार्रवाई करें।",
+      "",
+      "धन्यवाद सहित,",
+      "{{name}}"
+    ]
+  },
+  "emergency_fir_contextual_hi_latn": {
+    "title": "Context-aware emergency FIR (Roman Hindi)",
+    "content": [
+      "Prati,",
+      "Thanadhikari,",
+      "{{police_station}}, {{district}}",
+      "",
+      "Vishay: Hinsak ghatna ke sambandh mein FIR darj karane hetu anurodh",
+      "",
+      "Mahoday / Mahodaya,",
+      "",
+      "{{incident_line}}",
+      "",
+      "Sthiti gambhir hai aur turant police hastakshshep avashyak hai.",
+      "",
+      "Kripya vidhi ke anusar FIR darj kar avashyak kararvayi karen.",
+      "",
+      "Dhanyavad sahit,",
+      "{{name}}"
+    ]
+  }
+}

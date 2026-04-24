@@ -1,0 +1,29 @@
+# NS-S6-01 — local / staging stack (set secrets via `.env` in repo root or `env_file` below)
+services:
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      CORS_ORIGINS: http://localhost:3000
+      BILLING_MODE: ${BILLING_MODE:-none}
+    # env_file:
+    #   - ./backend/.env
+
+  web:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: http://localhost:8000
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api
+    environment:
+      NODE_ENV: production
+      # Browser calls host port 8000; keep API URL pointing at your machine, not the Docker service name
+      NEXT_PUBLIC_API_URL: http://localhost:8000
