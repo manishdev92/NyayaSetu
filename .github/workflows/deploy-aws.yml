@@ -72,9 +72,9 @@ jobs:
           ARN: ${{ vars.AWS_APPRUNNER_API_SERVICE_ARN }}
         run: |
           test -n "$ARN" || (echo "Add repo variable AWS_APPRUNNER_API_SERVICE_ARN (terraform output api_service_arn)" && exit 1)
-          # StartDeployment only works in RUNNING; in-flight deploys use OPERATION_IN_PROGRESS
+          # StartDeployment: need RUNNING *and* no in-flight operation (list-operations)
           ./scripts/wait_app_runner_running.sh "$ARN" "$AWS_REGION"
-          aws apprunner start-deployment --service-arn "$ARN" --region "$AWS_REGION"
+          ./scripts/apprunner_start_deployment.sh "$ARN" "$AWS_REGION"
 
       - name: Build & push Web
         env:
@@ -97,4 +97,4 @@ jobs:
         run: |
           test -n "$ARN" || (echo "Add repo variable AWS_APPRUNNER_WEB_SERVICE_ARN" && exit 1)
           ./scripts/wait_app_runner_running.sh "$ARN" "$AWS_REGION"
-          aws apprunner start-deployment --service-arn "$ARN" --region "$AWS_REGION"
+          ./scripts/apprunner_start_deployment.sh "$ARN" "$AWS_REGION"
