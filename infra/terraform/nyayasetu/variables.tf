@@ -64,3 +64,9 @@ variable "create_cloudfront_web" {
   description = "When deploy_web_service is true, create a CloudFront distribution in front of the web App Runner service (default *.cloudfront.net)."
   default     = true
 }
+
+variable "web_app_public_url" {
+  type        = string
+  description = "Public site URL (https://) — use CloudFront URL so Next.js metadata/redirects match the browser. Baked in Docker as NEXT_PUBLIC_APP_URL; set to terraform output web_cloudfront_url after the first apply."
+  default     = ""
+}

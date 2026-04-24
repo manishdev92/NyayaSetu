@@ -14,7 +14,21 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+function publicSiteUrl(): string {
+  const b = process.env.NEXT_PUBLIC_APP_URL?.trim();
+  if (b) {
+    try {
+      return new URL(b).toString();
+    } catch {
+      // fall through
+    }
+  }
+  return "http://localhost:3000";
+}
+
 export const metadata: Metadata = {
+  // Avoid canonical / OG URLs using the App Runner host when the site is served at CloudFront (AllViewerExceptHost rewrites Host at origin)
+  metadataBase: new URL(publicSiteUrl()),
   title: "NyayaSetu — AI Legal Companion",
   description: "Draft documents, understand your issue, and get practical next steps.",
   applicationName: "NyayaSetu",

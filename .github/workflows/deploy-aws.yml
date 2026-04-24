@@ -74,10 +74,15 @@ jobs:
           REGISTRY: ${{ steps.ecr.outputs.registry }}
           IMAGE_TAG: ${{ github.sha }}
           NEXT_PUBLIC_API_URL: ${{ secrets.NEXT_PUBLIC_API_URL }}
+          # Same value as web_app_public_url / terraform output web_cloudfront_url (CloudFront, not App Runner) so the UI does not resolve to the *.awsapprunner.com hostname
+          WEB_APP_PUBLIC_URL: ${{ vars.WEB_APP_PUBLIC_URL }}
         run: |
           test -n "$NEXT_PUBLIC_API_URL" || (echo "Add repo secret NEXT_PUBLIC_API_URL (HTTPS API URL from terraform output api_public_url)" && exit 1)
+          EXTRA=()
+          if [ -n "${WEB_APP_PUBLIC_URL}" ]; then EXTRA=(--build-arg "NEXT_PUBLIC_APP_URL=${WEB_APP_PUBLIC_URL}"); fi
           docker build --platform linux/amd64 \
             --build-arg "NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}" \
+            "${EXTRA[@]}" \
             -t "${REGISTRY}/${ECR_WEB_REPOSITORY}:${IMAGE_TAG}" \
             -t "${REGISTRY}/${ECR_WEB_REPOSITORY}:latest" \
             frontend

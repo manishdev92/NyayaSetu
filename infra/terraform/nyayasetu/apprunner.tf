@@ -1,6 +1,20 @@
 locals {
   api_image = "${module.ecr.api_repository_url}:latest"
   web_image = "${module.ecr.web_repository_url}:latest"
+  # Browsers on CloudFront send Origin: https://<id>.cloudfront.net — include it so API CORS allows the app.
+  api_cors_origins = join(
+    ",",
+    var.web_app_public_url != "" ? ["http://localhost:3000", var.web_app_public_url] : ["http://localhost:3000"]
+  )
+  # Runtime (server) sees App Runner host; this aligns env with the URL users & Clerk should use (e.g. CloudFront).
+  web_app_runtime_env = merge(
+    {
+      NODE_ENV                          = "production"
+      NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY = var.clerk_publishable_key
+      CLERK_SECRET_KEY                  = var.clerk_secret_key
+    },
+    var.web_app_public_url != "" ? { NEXT_PUBLIC_APP_URL = var.web_app_public_url } : {}
+  )
 }
 
 resource "aws_apprunner_service" "api" {
@@ -21,7 +35,7 @@ resource "aws_apprunner_service" "api" {
       image_configuration {
         port = "8000"
         runtime_environment_variables = {
-          CORS_ORIGINS               = "http://localhost:3000"
+          CORS_ORIGINS               = local.api_cors_origins
           CORS_ALLOW_APPRUNNER_REGEX = "true"
           BILLING_MODE               = "none"
           RAG_VECTOR_STORE           = "local"
@@ -65,12 +79,8 @@ resource "aws_apprunner_service" "web" {
       image_repository_type = "ECR"
 
       image_configuration {
-        port = "3000"
-        runtime_environment_variables = {
-          NODE_ENV                          = "production"
-          NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY = var.clerk_publishable_key
-          CLERK_SECRET_KEY                  = var.clerk_secret_key
-        }
+        port                          = "3000"
+        runtime_environment_variables = local.web_app_runtime_env
       }
     }
   }
