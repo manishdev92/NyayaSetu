@@ -58,3 +58,9 @@ variable "create_github_oidc_provider" {
   description = "Set true only on a fresh account with no token.actions.githubusercontent.com provider yet. Most accounts already have it (from GitHub Actions) — use false to avoid 409 EntityAlreadyExists."
   default     = false
 }
+
+variable "create_cloudfront_web" {
+  type        = bool
+  description = "When deploy_web_service is true, create a CloudFront distribution in front of the web App Runner service (default *.cloudfront.net)."
+  default     = true
+}

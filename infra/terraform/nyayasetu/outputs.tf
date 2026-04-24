@@ -47,3 +47,13 @@ output "api_service_arn" {
 output "web_service_arn" {
   value = length(aws_apprunner_service.web) > 0 ? aws_apprunner_service.web[0].arn : null
 }
+
+output "web_cloudfront_domain" {
+  description = "CloudFront default domain (dxxxx.cloudfront.net) for the web app; use for DNS CNAME/alias when adding freelytics-solutions.com."
+  value       = length(aws_cloudfront_distribution.web) > 0 ? aws_cloudfront_distribution.web[0].domain_name : null
+}
+
+output "web_cloudfront_url" {
+  description = "HTTPS URL to open the site via CloudFront (before a custom domain)."
+  value       = length(aws_cloudfront_distribution.web) > 0 ? "https://${aws_cloudfront_distribution.web[0].domain_name}" : null
+}
