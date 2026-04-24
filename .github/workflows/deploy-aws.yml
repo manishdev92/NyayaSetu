@@ -1,7 +1,16 @@
 # NS-DEPLOY-01 — build images, push to ECR, trigger App Runner (OIDC).
-# Run manually until GitHub is configured (see infra/README.md).
+# Runs on every push to main (see paths) and on manual dispatch.
+# One-time AWS setup: run ./scripts/deploy-aws.sh (or Terraform) so ECR + App Runner + IAM role exist;
+# then add GitHub secrets/variables (see infra/README.md).
 name: Deploy AWS
 on:
+  push:
+    branches: [main]
+    paths:
+      - "backend/**"
+      - "frontend/**"
+      - ".github/workflows/deploy-aws.yml"
+      - "docker-compose.yml"
   workflow_dispatch:
     inputs:
       aws_region:
@@ -10,12 +19,17 @@ on:
         type: string
         default: "ap-south-1"
 
+concurrency:
+  group: deploy-aws-${{ github.ref }}
+  cancel-in-progress: false
+
 permissions:
   id-token: write
   contents: read
 
 env:
-  AWS_REGION: ${{ github.event.inputs.aws_region || 'ap-south-1' }}
+  # dispatch: workflow input. push: repository variable or default (short-circuit avoids reading inputs on push).
+  AWS_REGION: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.aws_region || vars.AWS_REGION || 'ap-south-1' }}
   ECR_API_REPOSITORY: nyayasetu-api
   ECR_WEB_REPOSITORY: nyayasetu-web
 
@@ -29,6 +43,8 @@ jobs:
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          role-session-name: nyayasetu-github-actions
+          audience: sts.amazonaws.com
           aws-region: ${{ env.AWS_REGION }}
 
       - uses: aws-actions/amazon-ecr-login@v2
@@ -52,7 +68,7 @@ jobs:
         env:
           ARN: ${{ vars.AWS_APPRUNNER_API_SERVICE_ARN }}
         run: |
-          test -n "$ARN" || (echo "Add repo variable AWS_APPRUNNER_API_SERVICE_ARN (from terraform output api_service_arn)" && exit 1)
+          test -n "$ARN" || (echo "Add repo variable AWS_APPRUNNER_API_SERVICE_ARN (terraform output api_service_arn)" && exit 1)
           aws apprunner start-deployment --service-arn "$ARN" --region "$AWS_REGION"
 
       - name: Build & push Web
@@ -61,7 +77,7 @@ jobs:
           IMAGE_TAG: ${{ github.sha }}
           NEXT_PUBLIC_API_URL: ${{ secrets.NEXT_PUBLIC_API_URL }}
         run: |
-          test -n "$NEXT_PUBLIC_API_URL" || (echo "Add repo secret NEXT_PUBLIC_API_URL (HTTPS API URL)" && exit 1)
+          test -n "$NEXT_PUBLIC_API_URL" || (echo "Add repo secret NEXT_PUBLIC_API_URL (HTTPS API URL from terraform output api_public_url)" && exit 1)
           docker build \
             --build-arg "NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}" \
             -t "${REGISTRY}/${ECR_WEB_REPOSITORY}:${IMAGE_TAG}" \
