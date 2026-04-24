@@ -1,13 +1,15 @@
 # NS-DEPLOY-01 — build images, push to ECR, trigger App Runner (OIDC).
-# Runs on every push to main (see paths) and on manual dispatch.
-# One-time AWS setup: run ./scripts/deploy-aws.sh (or Terraform) so ECR + App Runner + IAM role exist;
-# then add GitHub secrets/variables (see infra/README.md).
+# Push: only when Docker/app inputs change (not every file under backend/ — e.g. tests, requirements-dev, CI).
+# If `sts:AssumeRoleWithWebIdentity` fails: the GitHub deploy IAM role may be missing (e.g. after terraform destroy).
+# Re-run Terraform / ./scripts/deploy-aws.sh to recreate `nyayasetu-github-deploy`, then set secret AWS_ROLE_TO_ASSUME to its ARN.
 name: Deploy AWS
 on:
   push:
     branches: [main]
     paths:
-      - "backend/**"
+      - "backend/Dockerfile"
+      - "backend/requirements.txt"
+      - "backend/app/**"
       - "frontend/**"
       - ".github/workflows/deploy-aws.yml"
       - "docker-compose.yml"

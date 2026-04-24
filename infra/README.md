@@ -12,6 +12,8 @@ Full runbook: [docs/DEPLOYMENT_AWS.md](../docs/DEPLOYMENT_AWS.md).
 
 **Secrets / `.env`:** do not commit real `backend/.env` or `frontend/.env` — they are gitignored. Use `*.env.example` and see [docs/ENVIRONMENT.md](../docs/ENVIRONMENT.md). CI enforces with `scripts/check-no-forbidden-secrets.sh`.
 
+**Deploy AWS** workflow: if the run fails on **Configure AWS (OIDC)** with `Not authorized to perform sts:AssumeRoleWithWebIdentity`, the IAM role in `AWS_ROLE_TO_ASSUME` is missing or the trust policy does not match this repo. After `terraform destroy` you must re-apply the stack (or at least recreate `nyayasetu-github-deploy`) and update the repository secret to the new role ARN (`terraform output -raw github_deploy_role_arn`).
+
 ## One-shot bootstrap (recommended)
 
 From the **repository root**, with AWS CLI configured (`aws sts get-caller-identity`):

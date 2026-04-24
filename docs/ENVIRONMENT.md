@@ -1,6 +1,6 @@
 # Local secrets and environment files
 
-- **Python tests** use `backend/requirements-dev.txt` (includes `pytest` + `requirements.txt`). Local: `pip install -r backend/requirements-dev.txt` then `cd backend && python -m pytest tests/ -q`. Production Docker uses `requirements.txt` only.
+- **Python tests:** local one-liner: `pip install -r backend/requirements-dev.txt` (or `pip install -r backend/requirements.txt` + `pip install 'pytest>=7.0.0'`). **GitHub CI** always installs `pytest` after `requirements.txt` so Dependabot and old branches do not need `requirements-dev.txt`. Production Docker uses `requirements.txt` only.
 
 - **Do not commit** `backend/.env`, `frontend/.env`, or any `*.local` files with real API keys. They are listed in `.gitignore` (and `frontend/.gitignore`).
 - **Templates only in git:** `backend/.env.example`, `frontend/.env.example` — copy to `.env` and fill in values; never put production secrets in a committed file.
