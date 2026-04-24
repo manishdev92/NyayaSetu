@@ -10,7 +10,7 @@ Full runbook: [docs/DEPLOYMENT_AWS.md](../docs/DEPLOYMENT_AWS.md).
 | `terraform/ecr/` | Thin wrapper: ECR only (quick apply). |
 | `terraform/nyayasetu/` | **Full stack:** ECR + GitHub OIDC deploy role + App Runner ECR access role + optional App Runner and **CloudFront (web)**. |
 
-**CloudFront (web):** with `deploy_web_service = true` and `create_cloudfront_web = true` (default), a distribution is created in front of the **web** App Runner service origin (`*.cloudfront.net` until you add ACM + custom domain in Hostinger). Check the URL: `terraform output -raw web_cloudfront_url` (also `web_cloudfront_domain`). If `nyayasetu-web` is **not** in this Terraform state, import it or set `create_cloudfront_web = false` until the service is managed here.
+**CloudFront (web):** with `deploy_web_service = true` and `create_cloudfront_web = true` (default), a distribution is created in front of the **web** App Runner service origin (`*.cloudfront.net` until you add ACM + custom domain in Hostinger). **Deploy flags** are set in `terraform/nyayasetu/terraform.tfvars.json` (committed) so a plain `terraform apply` does not destroy the API. Check the URL: `terraform output -raw web_cloudfront_url` (also `web_cloudfront_domain`). If `nyayasetu-web` was created outside TF, `terraform import 'aws_apprunner_service.web[0]' <web_service_arn>` then apply.
 
 **Secrets / `.env`:** do not commit real `backend/.env` or `frontend/.env` — they are gitignored. Use `*.env.example` and see [docs/ENVIRONMENT.md](../docs/ENVIRONMENT.md). CI enforces with `scripts/check-no-forbidden-secrets.sh`.
 
