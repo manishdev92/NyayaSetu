@@ -1,5 +1,5 @@
 # NS-S6-01 — Next.js (build + `next start`; no standalone output required)
-FROM node:20-alpine
+FROM --platform=linux/amd64 node:20-alpine
 WORKDIR /app
 COPY package.json package-lock.json* ./
 RUN npm ci

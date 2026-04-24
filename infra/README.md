@@ -28,12 +28,22 @@ The script:
 4. Builds **`nyayasetu-web`** with `NEXT_PUBLIC_API_URL` set to the live API URL, pushes **`nyayasetu-web:latest`**.
 5. Applies with **Web App Runner on** and prints `terraform output`.
 
-**If OIDC provider already exists** in the account (error on apply):
+**If apply fails with `EntityAlreadyExists` for `token.actions.githubusercontent.com` (409):** your account already has the GitHub OIDC provider. The Terraform default is now **`create_github_oidc_provider=false`**. Re-run apply or `./scripts/deploy-aws.sh` (no extra env needed). **Brand-new** AWS accounts with *no* such provider: run once with `export TF_VAR_create_github_oidc_provider=true`.
+
+## Destroy (teardown)
+
+**On the machine that has `terraform.tfstate`** for the stack (default local state in `infra/terraform/nyayasetu`):
 
 ```bash
-cd infra/terraform/nyayasetu
-terraform apply -var="create_github_oidc_provider=false" ...
+export I_UNDERSTAND_DESTROY_NYAYASETU=YES
+./scripts/destroy-aws.sh --plan   # optional: show plan only
+export I_UNDERSTAND_DESTROY_NYAYASETU=YES
+./scripts/destroy-aws.sh
 ```
+
+`TF_VAR_create_github_oidc_provider` should match the value you used at apply (default `false`).
+
+**GitHub Actions** (manual only): **Actions** → **Destroy AWS (Terraform)** → **Run workflow** (see [`.github/workflows/destroy-aws-terraform.yml`](../.github/workflows/destroy-aws-terraform.yml)). It runs `terraform destroy` only when the stack uses the same [remote state](https://developer.hashicorp.com/terraform/language/settings/backends/s3) as your applies; a runner cannot use a local `terraform.tfstate`. Set repository secret `AWS_TERRAFORM_DESTROY_ROLE_ARN` (broad **destroy** rights — not the ECR deploy role) and, in the form, set **confirm** to `destroy-nyayasetu` exactly.
 
 ## ECR-only (legacy)
 
@@ -89,6 +99,16 @@ That is **Git auth to GitHub**, not AWS. Use `gh auth login` + `gh auth setup-gi
 ### D) “No valid credential sources” in the job
 
 `AWS_ROLE_TO_ASSUME` is missing or the secret is empty — add the secret in the **same** repository where the workflow runs (not only org-level if the repo does not inherit).
+
+### E) App Runner: `Account … is restricted and can support only two App Runner services per region`
+
+Your AWS account can only run **two** App Runner services in that **region** (common on newer or limited accounts). **Options:**
+
+1. **Free two slots** — In **AWS Console → App Runner** (same region, e.g. `ap-south-1`), delete or pause **old / test** services you do not need, then run `./scripts/deploy-aws.sh` again.
+2. **Use another region** — e.g. deploy with `ap-south-1` full: set `export AWS_REGION=us-east-1` (or another region) and re-run **Terraform** in `infra/terraform/nyayasetu` so ECR and App Runner are in that region (you will recreate ECR repos there or use a new state; simplest is a clean `terraform apply` in the new region after updating `aws_region`).
+3. **Ask AWS** — **Support** can raise the limit or remove the “restricted” flag on the account.
+
+`nyayasetu-api` + `nyayasetu-web` need **two** services — you must have **zero** other App Runner services in that region, or use a region/limit that allows two new ones.
 
 ## Docker login (manual push)
 

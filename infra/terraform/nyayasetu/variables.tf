@@ -39,8 +39,22 @@ variable "openai_api_key" {
   sensitive   = true
 }
 
+variable "clerk_publishable_key" {
+  type        = string
+  description = "Clerk publishable key for the web container (NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY)."
+  default     = ""
+  sensitive   = true
+}
+
+variable "clerk_secret_key" {
+  type        = string
+  description = "Clerk secret key for the web container (CLERK_SECRET_KEY)."
+  default     = ""
+  sensitive   = true
+}
+
 variable "create_github_oidc_provider" {
   type        = bool
-  description = "Set false if this account already has the GitHub OIDC provider (import it instead)."
-  default     = true
+  description = "Set true only on a fresh account with no token.actions.githubusercontent.com provider yet. Most accounts already have it (from GitHub Actions) — use false to avoid 409 EntityAlreadyExists."
+  default     = false
 }

@@ -1,6 +1,12 @@
-import { clerkMiddleware } from "@clerk/nextjs/server";
+import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 
-export default clerkMiddleware();
+const isPublicRoute = createRouteMatcher(["/health", "/health/(.*)"]);
+
+export default clerkMiddleware((_auth, request) => {
+  if (isPublicRoute(request)) {
+    return;
+  }
+});
 
 export const config = {
   matcher: [

@@ -60,7 +60,7 @@ jobs:
           REGISTRY: ${{ steps.ecr.outputs.registry }}
           IMAGE_TAG: ${{ github.sha }}
         run: |
-          docker build -t "${REGISTRY}/${ECR_API_REPOSITORY}:${IMAGE_TAG}" -t "${REGISTRY}/${ECR_API_REPOSITORY}:latest" backend
+          docker build --platform linux/amd64 -t "${REGISTRY}/${ECR_API_REPOSITORY}:${IMAGE_TAG}" -t "${REGISTRY}/${ECR_API_REPOSITORY}:latest" backend
           docker push "${REGISTRY}/${ECR_API_REPOSITORY}:${IMAGE_TAG}"
           docker push "${REGISTRY}/${ECR_API_REPOSITORY}:latest"
 
@@ -78,7 +78,7 @@ jobs:
           NEXT_PUBLIC_API_URL: ${{ secrets.NEXT_PUBLIC_API_URL }}
         run: |
           test -n "$NEXT_PUBLIC_API_URL" || (echo "Add repo secret NEXT_PUBLIC_API_URL (HTTPS API URL from terraform output api_public_url)" && exit 1)
-          docker build \
+          docker build --platform linux/amd64 \
             --build-arg "NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}" \
             -t "${REGISTRY}/${ECR_WEB_REPOSITORY}:${IMAGE_TAG}" \
             -t "${REGISTRY}/${ECR_WEB_REPOSITORY}:latest" \

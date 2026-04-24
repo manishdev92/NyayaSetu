@@ -125,7 +125,6 @@ resource "aws_ecr_repository_policy" "api_github" {
           "ecr:UploadLayerPart",
           "ecr:CompleteLayerUpload",
         ]
-        Resource = module.ecr.api_repository_arn
       }
     ]
   })
@@ -151,7 +150,6 @@ resource "aws_ecr_repository_policy" "web_github" {
           "ecr:UploadLayerPart",
           "ecr:CompleteLayerUpload",
         ]
-        Resource = module.ecr.web_repository_arn
       }
     ]
   })

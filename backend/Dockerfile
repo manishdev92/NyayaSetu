@@ -1,5 +1,6 @@
 # NS-S6-01 — production-style image (API only)
-FROM python:3.11-slim
+# Pin platform so App Runner (linux/amd64) and M1/Apple Silicon `docker build` both produce a runnable image.
+FROM --platform=linux/amd64 python:3.11-slim
 
 WORKDIR /app
 ENV PYTHONUNBUFFERED=1 \

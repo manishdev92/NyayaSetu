@@ -1,0 +1,90 @@
+# Teardown: Terraform in infra/terraform/nyayasetu (App Runner, ECR, IAM, optional OIDC).
+# Manual only — no automatic runs. GitHub: Actions → "Destroy AWS (Terraform)" → Run workflow.
+#
+# Read before running:
+# - This repo uses *local* Terraform state by default. A GitHub runner does not have your laptop’s
+#   terraform.tfstate. This workflow only works with the same remote backend (e.g. S3) you configured.
+#   Otherwise run: I_UNDERSTAND_DESTROY_NYAYASETU=YES ./scripts/destroy-aws.sh on the machine with state.
+# - The “Deploy AWS” role (ECR + start-deployment) cannot run destroy. Set secret
+#   AWS_TERRAFORM_DESTROY_ROLE_ARN to an IAM role that trusts this repo (OIDC) and can delete
+#   App Runner, ECR, and IAM (e.g. broad policy in a non-prod account).
+name: Destroy AWS (Terraform)
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: "Type exactly: destroy-nyayasetu"
+        required: true
+        type: string
+        default: ""
+      create_github_oidc_provider:
+        description: "Must match the value you used at apply (OIDC resource in this stack or not)"
+        required: true
+        type: choice
+        default: "false"
+        options:
+          - "false"
+          - "true"
+
+concurrency:
+  group: destroy-aws-terraform
+  cancel-in-progress: false
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  # Repository variable AWS_REGION, or ap-south-1 (see infra/terraform/nyayasetu/variables.tf).
+  AWS_REGION: ${{ vars.AWS_REGION || 'ap-south-1' }}
+  TF_IN_AUTOMATION: "true"
+
+jobs:
+  destroy:
+    if: github.event.inputs.confirm == 'destroy-nyayasetu'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_TERRAFORM_DESTROY_ROLE_ARN }}
+          role-session-name: nyayasetu-terraform-destroy
+          audience: sts.amazonaws.com
+          aws-region: ${{ env.AWS_REGION }}
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.9.0
+          terraform_wrapper: false
+
+      - name: Terraform init
+        working-directory: infra/terraform/nyayasetu
+        env:
+          TF_VAR_aws_region: ${{ env.AWS_REGION }}
+        run: terraform init -input=false -no-color
+
+      - name: Plan destroy
+        working-directory: infra/terraform/nyayasetu
+        env:
+          TF_VAR_aws_region: ${{ env.AWS_REGION }}
+        run: |
+          set -euo pipefail
+          OIDC="${{ github.event.inputs.create_github_oidc_provider }}"
+          terraform plan -destroy -out=tfdestroy -no-color -var="create_github_oidc_provider=$OIDC"
+
+      - name: Apply destroy
+        working-directory: infra/terraform/nyayasetu
+        env:
+          TF_VAR_aws_region: ${{ env.AWS_REGION }}
+        run: terraform apply -auto-approve -no-color tfdestroy
+
+  wrong-confirm:
+    if: github.event.inputs.confirm != 'destroy-nyayasetu'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Reject
+        run: |
+          echo "Set the confirm field to exactly: destroy-nyayasetu (you sent: ${{ github.event.inputs.confirm }})"
+          exit 1

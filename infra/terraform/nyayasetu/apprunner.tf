@@ -67,7 +67,9 @@ resource "aws_apprunner_service" "web" {
       image_configuration {
         port = "3000"
         runtime_environment_variables = {
-          NODE_ENV = "production"
+          NODE_ENV                          = "production"
+          NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY = var.clerk_publishable_key
+          CLERK_SECRET_KEY                  = var.clerk_secret_key
         }
       }
     }
@@ -80,11 +82,18 @@ resource "aws_apprunner_service" "web" {
 
   health_check_configuration {
     protocol            = "HTTP"
-    path                = "/"
+    path                = "/health"
     interval            = 10
     timeout             = 5
     healthy_threshold   = 1
     unhealthy_threshold = 5
+  }
+
+  lifecycle {
+    precondition {
+      condition     = !var.deploy_web_service || (length(var.clerk_secret_key) > 0 && length(var.clerk_publishable_key) > 0)
+      error_message = "Set TF_VAR_clerk_secret_key and TF_VAR_clerk_publishable_key (Clerk) when deploy_web_service is true — the Next.js app requires them."
+    }
   }
 
   depends_on = [aws_apprunner_service.api]
