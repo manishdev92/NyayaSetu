@@ -20,6 +20,8 @@ locals {
 resource "aws_ecr_repository" "api" {
   name                 = var.api_repository_name
   image_tag_mutability = "MUTABLE"
+  # Allow terraform destroy when images still exist (e.g. after deploy push).
+  force_delete         = true
 
   image_scanning_configuration {
     scan_on_push = true
@@ -29,6 +31,7 @@ resource "aws_ecr_repository" "api" {
 resource "aws_ecr_repository" "web" {
   name                 = var.web_repository_name
   image_tag_mutability = "MUTABLE"
+  force_delete         = true
 
   image_scanning_configuration {
     scan_on_push = true
