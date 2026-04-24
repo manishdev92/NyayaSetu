@@ -1,0 +1,3 @@
+# Dev/test only — not installed in production Docker image
+-r requirements.txt
+pytest>=7.0.0

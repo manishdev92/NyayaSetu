@@ -1,5 +1,7 @@
 # Local secrets and environment files
 
+- **Python tests** use `backend/requirements-dev.txt` (includes `pytest` + `requirements.txt`). Local: `pip install -r backend/requirements-dev.txt` then `cd backend && python -m pytest tests/ -q`. Production Docker uses `requirements.txt` only.
+
 - **Do not commit** `backend/.env`, `frontend/.env`, or any `*.local` files with real API keys. They are listed in `.gitignore` (and `frontend/.gitignore`).
 - **Templates only in git:** `backend/.env.example`, `frontend/.env.example` — copy to `.env` and fill in values; never put production secrets in a committed file.
 - **CI** (`/.github/workflows/ci.yml`) uses placeholder values for Clerk/Next in the `npm run build` step so the public repo can build without your keys.
