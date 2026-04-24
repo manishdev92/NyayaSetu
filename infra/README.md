@@ -69,11 +69,10 @@ Then in **GitHub** → *Settings → Secrets and variables → Actions*:
 |------|------|--------|
 | Secret | `AWS_ROLE_TO_ASSUME` | `terraform output -raw github_deploy_role_arn` |
 | Secret | `NEXT_PUBLIC_API_URL` | `terraform output -raw api_public_url` (HTTPS, no trailing slash) |
-| Variable | `AWS_APPRUNNER_API_SERVICE_ARN` | `terraform output -raw api_service_arn` |
-| Variable | `AWS_APPRUNNER_WEB_SERVICE_ARN` | `terraform output -raw web_service_arn` |
+| Variable (optional) | `AWS_APPRUNNER_API_SERVICE_ARN` / `WEB` | ARNs from `terraform output` — not required for **Deploy AWS** (that workflow uses **ECR auto deploy** on `:latest` push, not `start-deployment`) |
 | Variable (optional) | `AWS_REGION` | e.g. `ap-south-1` — only if not using the default in the workflow |
 
-**After that:** every **push to `main`** that changes `backend/`, `frontend/`, the deploy workflow file, or `docker-compose.yml` runs **Deploy AWS** automatically (build → ECR → App Runner). You can still run **Actions → Deploy AWS → Run workflow** manually.
+**After that:** every **push to `main`** that changes the deploy **paths** runs **Deploy AWS** (build and push to ECR; **App Runner picks up `latest` via automatic deployment**). You can still run **Actions → Deploy AWS → Run workflow** manually.
 
 Federation: IAM must have an OIDC provider for `token.actions.githubusercontent.com` (Terraform creates it when `create_github_oidc_provider=true`). The deploy role trust must match this repo: default **`manishdev92/NyayaSetu`** in `infra/terraform/nyayasetu/variables.tf` (override with `TF_VAR_github_repository` if needed).
 
