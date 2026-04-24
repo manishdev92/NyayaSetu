@@ -30,6 +30,7 @@
 
 **Deep-dive (AWS & Terraform):** [infra/README.md](infra/README.md)  
 **Phased deployment & milestones:** [docs/DEPLOYMENT_AWS.md](docs/DEPLOYMENT_AWS.md)  
+**User request flow (UI → API → layers → output):** [docs/USER_REQUEST_FLOW.md](docs/USER_REQUEST_FLOW.md)  
 **Environment variables:** [docs/ENVIRONMENT.md](docs/ENVIRONMENT.md) (see also `*.env.example` in `backend/` and `frontend/`)
 
 ---
