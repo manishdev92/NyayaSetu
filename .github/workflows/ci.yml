@@ -29,7 +29,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      # requirements-dev.txt is on main; old branches/Dependabot PRs may not have it — always install pytest
+      # requirements-dev.txt is on main; some branches may not have it — always install pytest
       - name: Install
         run: |
           pip install -r requirements.txt
