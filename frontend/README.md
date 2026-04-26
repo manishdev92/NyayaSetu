@@ -14,9 +14,15 @@ pnpm dev
 bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000) with your browser to see the marketing home. The signed-in assistant lives at [`/chat`](http://localhost:3000/chat).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### Marketing site (GTM)
+
+- **Routes (English):** `/`, `/features`, `/how-it-works`, `/pricing` (includes **live caps** from `GET /config`), `/faq`, `/about`, `/blog` (stub), `/contact` (optional `NEXT_PUBLIC_CONTACT_EMAIL`).
+- **Hindi:** same paths under `/hi/…` (e.g. `/hi/pricing`). Header **हिंदी / EN** toggles locale. Copy lives in `lib/marketingBundles.ts`.
+- **S3 / static hosting:** These pages are server-rendered Next.js by default. To mirror them on S3, use `output: 'export'` (if you drop fully dynamic APIs from those routes) or publish a static snapshot; keep `/chat` on a host that can run the Next.js app and call your API. A common pattern is CloudFront with two origins: static bucket for marketing paths and the App Runner / Vercel URL for `/chat` and API proxies.
+
+Edit copy in `lib/marketingBundles.ts` (or add MDX under `app/blog` later).
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 

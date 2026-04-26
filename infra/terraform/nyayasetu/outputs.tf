@@ -1,3 +1,12 @@
+output "ingest_corpus_bucket" {
+  value = (
+    length(aws_s3_bucket.ingest_corpus) > 0
+    ? aws_s3_bucket.ingest_corpus[0].id
+    : null
+  )
+  description = "S3 bucket for statute `.md` drops (empty = not created). Use s3://<id>/prefix/ with ingest_statutes --s3-uri."
+}
+
 output "aws_region" {
   value = var.aws_region
 }
@@ -16,6 +25,11 @@ output "ecr_web_repository_url" {
 
 output "github_deploy_role_arn" {
   value = aws_iam_role.github_deploy.arn
+}
+
+output "github_terraform_destroy_role_arn" {
+  description = "IAM role for the GitHub Actions 'Destroy AWS (Terraform)' workflow (set repository secret AWS_TERRAFORM_DESTROY_ROLE_ARN)."
+  value       = aws_iam_role.github_terraform_destroy.arn
 }
 
 output "apprunner_ecr_access_role_arn" {

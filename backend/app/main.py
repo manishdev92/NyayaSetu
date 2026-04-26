@@ -41,7 +41,7 @@ def health() -> dict[str, str]:
 
 
 @app.get("/ready")
-def ready() -> dict[str, str | bool]:
+def ready() -> dict[str, str | bool | list[str]]:
     """Liveness: always up. `openai_configured` false means generation will 503 (NS-S6-03)."""
     pinecone_key = bool(settings.pinecone_api_key and str(settings.pinecone_api_key).strip())
     pinecone_name = bool(settings.pinecone_index and str(settings.pinecone_index).strip())
@@ -53,4 +53,8 @@ def ready() -> dict[str, str | bool]:
         "pinecone_configured": pinecone_key and pinecone_name,
         "stripe_checkout_ready": stripe_checkout_ready(),
         "stripe_portal_ready": stripe_portal_ready(),
+        "client_modes_supported": settings.get_client_modes_supported(),
+        "lawyer_mode_requires_sign_in": bool(settings.lawyer_client_mode_requires_user_id),
+        "lawyer_mode_requires_pro": bool(settings.lawyer_client_mode_requires_pro),
+        "lawyer_pro_gate_active": bool(settings.lawyer_pro_gate_active()),
     }

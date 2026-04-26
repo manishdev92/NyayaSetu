@@ -136,6 +136,19 @@ export type DocumentEvaluatorReport = {
   refiner_notes?: string;
 };
 
+export type GenerateTaskType = "draft_letter" | "qa_only" | "draft_with_qa" | "consumer_complaint_filing";
+
+/** Sprint 6: optional licensed case-law rows (lawyer tier; may be empty). */
+export type CaseLawReference = {
+  title: string;
+  citation: string;
+  court: string;
+  year: number | null;
+  source: string;
+  url: string;
+  snippet: string;
+};
+
 export type GenerateResponse = {
   document: string;
   draft: string;
@@ -198,6 +211,15 @@ export type GenerateResponse = {
     remaining: number;
     reset_at_utc: string;
   };
+  /** Effective tier applied (citizen default; lawyer when requested). */
+  client_mode?: "citizen" | "lawyer";
+  /** P2: letter vs Q&A blend (echo of request). */
+  task_type?: GenerateTaskType;
+  /** S6: case-law research snippets (may be empty). */
+  case_law_references?: CaseLawReference[];
+  forum_caption?: string | null;
+  prayer_items?: string[];
+  annexure_checklist?: string[];
 };
 
 export type GenerateRequestPayload = {
@@ -213,6 +235,10 @@ export type GenerateRequestPayload = {
   skip_clarification?: boolean;
   /** Clerk user id — sent as X-User-Id for usage limits */
   userId?: string | null;
+  /** Citizen (default) vs lawyer path; not authentication — see docs/CLIENT_MODE_DESIGN.md */
+  client_mode?: "citizen" | "lawyer";
+  /** P2: full letter (default), answer-first memo, or two short answer paragraphs + full letter */
+  task_type?: GenerateTaskType;
 };
 
 /** Response from `POST /ingest-document` (text extracted for pasting into chat). */
@@ -419,6 +445,20 @@ function getBaseUrl(): string {
   return process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 }
 
+/** Parse `client_modes_supported` from GET /config (P1-3). */
+function parseClientModesSupported(raw: unknown): ("citizen" | "lawyer")[] {
+  if (!Array.isArray(raw)) return ["citizen", "lawyer"];
+  const out: ("citizen" | "lawyer")[] = [];
+  for (const x of raw) {
+    if (x === "citizen" || x === "lawyer") {
+      if (!out.includes(x)) out.push(x);
+    }
+  }
+  if (out.length === 0) return ["citizen", "lawyer"];
+  if (out.includes("lawyer")) return ["citizen", "lawyer"];
+  return ["citizen"];
+}
+
 /** GET `/config` — product flags (no auth). Fails soft if API unreachable. */
 export type PublicConfig = {
   /** When true, API may return `document_revised` + `document_evaluator` after generate. */
@@ -444,6 +484,16 @@ export type PublicConfig = {
   entitlements_store?: "sqlite" | "postgres";
   /** `memory` (default) or `redis` when `REDIS_URL` is set on the API. */
   rate_limit_backend?: "memory" | "redis";
+  /** Subset of modes the UI may advertise (GET /config, GET /ready); see `CLIENT_MODES_SUPPORTED` on API. */
+  client_modes_supported: ("citizen" | "lawyer")[];
+  /** S6: `off` = hide panel; `noop` = empty placeholder; `tavily_preview` = external research snippets. */
+  case_law_research_mode?: "off" | "noop" | "tavily_preview";
+  /** P1-1: API rejects lawyer mode without X-User-Id when this is true; UI should require sign-in to select lawyer. */
+  lawyer_mode_requires_sign_in?: boolean;
+  /** P1-1: Set when deployment may require Pro for lawyer (see `lawyer_pro_gate_active` for effective gate with Stripe). */
+  lawyer_mode_requires_pro?: boolean;
+  /** True when API enforces Pro for lawyer mode (requires Pro + Stripe billing). */
+  lawyer_pro_gate_active?: boolean;
 };
 
 export type BillingEntitlements = {
@@ -491,6 +541,16 @@ export async function fetchPublicConfig(): Promise<PublicConfig | null> {
         j.entitlements_store === "postgres" || j.entitlements_store === "sqlite" ? j.entitlements_store : "sqlite",
       rate_limit_backend:
         j.rate_limit_backend === "redis" || j.rate_limit_backend === "memory" ? j.rate_limit_backend : "memory",
+      client_modes_supported: parseClientModesSupported(j.client_modes_supported),
+      case_law_research_mode:
+        j.case_law_research_mode === "noop" ||
+        j.case_law_research_mode === "off" ||
+        j.case_law_research_mode === "tavily_preview"
+          ? j.case_law_research_mode
+          : "off",
+      lawyer_mode_requires_sign_in: j.lawyer_mode_requires_sign_in === true,
+      lawyer_mode_requires_pro: j.lawyer_mode_requires_pro === true,
+      lawyer_pro_gate_active: j.lawyer_pro_gate_active === true,
     };
   } catch {
     return null;
@@ -911,6 +971,29 @@ export function mapServerJsonToGenerateResponse(data: unknown): GenerateResponse
           })
       : undefined;
 
+  const clRaw = parsed.case_law_references;
+  const case_law_references: CaseLawReference[] | undefined = Array.isArray(clRaw)
+    ? (clRaw as unknown[])
+        .filter((x) => x !== null && typeof x === "object")
+        .map((x) => {
+          const o = x as Record<string, unknown>;
+          const yr = o.year;
+          return {
+            title: typeof o.title === "string" ? o.title : "",
+            citation: typeof o.citation === "string" ? o.citation : "",
+            court: typeof o.court === "string" ? o.court : "",
+            year: typeof yr === "number" && Number.isFinite(yr) ? Math.floor(yr) : null,
+            source: typeof o.source === "string" ? o.source : "",
+            url: typeof o.url === "string" ? o.url : "",
+            snippet: typeof o.snippet === "string" ? o.snippet : "",
+          };
+        })
+    : undefined;
+  const prayer_items = Array.isArray(parsed.prayer_items) ? parsed.prayer_items.map(String) : undefined;
+  const annexure_checklist = Array.isArray(parsed.annexure_checklist)
+    ? parsed.annexure_checklist.map(String)
+    : undefined;
+
   const evRaw = parsed.document_evaluator;
   const document_evaluator: DocumentEvaluatorReport | null | undefined =
     evRaw && typeof evRaw === "object" && !Array.isArray(evRaw)
@@ -973,6 +1056,19 @@ export function mapServerJsonToGenerateResponse(data: unknown): GenerateResponse
     urgency_level: typeof parsed.urgency_level === "string" ? parsed.urgency_level : undefined,
     generation_score: typeof parsed.generation_score === "number" && Number.isFinite(parsed.generation_score) ? parsed.generation_score : undefined,
     usage: parseUsageBlock(parsed.usage),
+    client_mode:
+      parsed.client_mode === "lawyer" || parsed.client_mode === "citizen" ? parsed.client_mode : "citizen",
+    task_type:
+      parsed.task_type === "qa_only" ||
+      parsed.task_type === "draft_with_qa" ||
+      parsed.task_type === "draft_letter" ||
+      parsed.task_type === "consumer_complaint_filing"
+        ? parsed.task_type
+        : "draft_letter",
+    case_law_references,
+    forum_caption: typeof parsed.forum_caption === "string" ? parsed.forum_caption : null,
+    prayer_items,
+    annexure_checklist,
   };
 }
 
@@ -993,6 +1089,12 @@ export async function generateLegalResponse(payload: GenerateRequestPayload): Pr
   }
   if (payload.response_language) {
     body.response_language = payload.response_language;
+  }
+  if (payload.client_mode === "lawyer" || payload.client_mode === "citizen") {
+    body.client_mode = payload.client_mode;
+  }
+  if (payload.task_type === "qa_only" || payload.task_type === "draft_with_qa" || payload.task_type === "draft_letter") {
+    body.task_type = payload.task_type;
   }
 
   const headers: Record<string, string> = { "Content-Type": "application/json" };
@@ -1158,6 +1260,12 @@ export async function streamGenerateLegalResponse(
   }
   if (payload.response_language) {
     body.response_language = payload.response_language;
+  }
+  if (payload.client_mode === "lawyer" || payload.client_mode === "citizen") {
+    body.client_mode = payload.client_mode;
+  }
+  if (payload.task_type === "qa_only" || payload.task_type === "draft_with_qa" || payload.task_type === "draft_letter") {
+    body.task_type = payload.task_type;
   }
 
   const headers: Record<string, string> = {

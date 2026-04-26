@@ -31,10 +31,7 @@ if [[ -z "${I_UNDERSTAND_DESTROY_NYAYASETU:-}" || "${I_UNDERSTAND_DESTROY_NYAYAS
 fi
 
 echo "==> Terraform init ($TF_DIR)"
-(
-  cd "$TF_DIR"
-  terraform init -input=false
-)
+"${ROOT}/scripts/nyayasetu-terraform-init.sh"
 
 if [[ "$PLAN_ONLY" == "true" ]]; then
   echo "==> terraform plan -destroy (no changes applied)"

@@ -1,13 +1,14 @@
 # Teardown: Terraform in infra/terraform/nyayasetu (App Runner, ECR, IAM, optional OIDC).
 # Manual only — no automatic runs. GitHub: Actions → "Destroy AWS (Terraform)" → Run workflow.
 #
-# Read before running:
-# - This repo uses *local* Terraform state by default. A GitHub runner does not have your laptop’s
-#   terraform.tfstate. This workflow only works with the same remote backend (e.g. S3) you configured.
-#   Otherwise run: I_UNDERSTAND_DESTROY_NYAYASETU=YES ./scripts/destroy-aws.sh on the machine with state.
-# - The “Deploy AWS” role (ECR + start-deployment) cannot run destroy. Set secret
-#   AWS_TERRAFORM_DESTROY_ROLE_ARN to an IAM role that trusts this repo (OIDC) and can delete
-#   App Runner, ECR, and IAM (e.g. broad policy in a non-prod account).
+# Prerequisites (GitHub + AWS):
+# - **Remote state in S3** (same key your laptop used after `terraform init -migrate-state`).
+# - Repository **secret** `AWS_TERRAFORM_DESTROY_ROLE_ARN`: IAM role (OIDC trust to this repo) with
+#   `terraform destroy` on this stack *and* read/write on the state object in S3 (and DynamoDB lock if used).
+#   Not the ECR "Deploy AWS" role.
+# - Repository **variable** `TERRAFORM_S3_STATE_BUCKET` and optional `TERRAFORM_S3_STATE_KEY`,
+#   `TERRAFORM_S3_DYNAMODB_TABLE` (must match backend.s3.hcl on the machine you migrated from).
+# - **Secret** `AWS_TERRAFORM_DESTROY_ROLE_ARN` = `terraform output -raw github_terraform_destroy_role_arn` (after a normal apply; not the ECR deploy role).
 name: Destroy AWS (Terraform)
 on:
   workflow_dispatch:
@@ -35,15 +36,30 @@ permissions:
   contents: read
 
 env:
-  # Repository variable AWS_REGION, or ap-south-1 (see infra/terraform/nyayasetu/variables.tf).
   AWS_REGION: ${{ vars.AWS_REGION || 'ap-south-1' }}
   TF_IN_AUTOMATION: "true"
+  TERRAFORM_S3_STATE_KEY: ${{ vars.TERRAFORM_S3_STATE_KEY }}
+  TERRAFORM_S3_STATE_REGION: ${{ vars.TERRAFORM_S3_STATE_REGION }}
 
 jobs:
   destroy:
     if: github.event.inputs.confirm == 'destroy-nyayasetu'
     runs-on: ubuntu-latest
+    env:
+      DESTROY_ROLE: ${{ secrets.AWS_TERRAFORM_DESTROY_ROLE_ARN }}
+      TERRAFORM_S3_DYNAMODB_TABLE: ${{ vars.TERRAFORM_S3_DYNAMODB_TABLE }}
     steps:
+      - name: Check secrets and variables
+        run: |
+          if [ -z "$DESTROY_ROLE" ]; then
+            echo '::error::Set repository secret AWS_TERRAFORM_DESTROY_ROLE_ARN to an OIDC role ARN (see infra/README, Destroy workflow). It must not be the ECR deploy role only.'
+            exit 1
+          fi
+          if [ -z "${{ vars.TERRAFORM_S3_STATE_BUCKET }}" ]; then
+            echo '::error::Set repository variable TERRAFORM_S3_STATE_BUCKET to the S3 bucket that holds the Terraform state (after S3 remote state migration; see infra/README).'
+            exit 1
+          fi
+
       - uses: actions/checkout@v4
 
       - name: Configure AWS (OIDC)
@@ -54,16 +70,50 @@ jobs:
           audience: sts.amazonaws.com
           aws-region: ${{ env.AWS_REGION }}
 
+      - name: Who am I (debug)
+        run: aws sts get-caller-identity
+
       - uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: 1.9.0
           terraform_wrapper: false
 
+      - name: Write S3 backend config
+        id: s3b
+        working-directory: infra/terraform/nyayasetu
+        run: |
+          BUCKET='${{ vars.TERRAFORM_S3_STATE_BUCKET }}'
+          KEY="${TERRAFORM_S3_STATE_KEY:-nyayasetu/terraform.tfstate}"
+          S3R="${TERRAFORM_S3_STATE_REGION:-$AWS_REGION}"
+          {
+            echo "bucket = \"${BUCKET}\""
+            echo "key    = \"${KEY}\""
+            echo "region = \"${S3R}\""
+            echo "encrypt = true"
+          } > ci-backend.hcl
+          if [ -n "$TERRAFORM_S3_DYNAMODB_TABLE" ]; then
+            echo "dynamodb_table = \"${TERRAFORM_S3_DYNAMODB_TABLE}\"" >> ci-backend.hcl
+          fi
+          echo "state_key=$KEY" >> "$GITHUB_OUTPUT"
+          echo "s3_region=$S3R" >> "$GITHUB_OUTPUT"
+
+      - name: Ensure state object exists in S3
+        run: |
+          BUCKET='${{ vars.TERRAFORM_S3_STATE_BUCKET }}'
+          KEY='${{ steps.s3b.outputs.state_key }}'
+          S3R='${{ steps.s3b.outputs.s3_region }}'
+          if ! aws s3api head-object --bucket "$BUCKET" --key "$KEY" --region "$S3R" 2>/dev/null; then
+            echo '::error::No object at s3://'"$BUCKET"'/'"$KEY"' (region '"$S3R"'). Run terraform init -backend-config=backend.s3.hcl -migrate-state, or set TERRAFORM_S3_STATE_REGION if the bucket is not in '"$AWS_REGION"'. See infra/README (Remote state).'
+            exit 1
+          fi
+        env:
+          AWS_REGION: ${{ env.AWS_REGION }}
+
       - name: Terraform init
         working-directory: infra/terraform/nyayasetu
         env:
           TF_VAR_aws_region: ${{ env.AWS_REGION }}
-        run: terraform init -input=false -no-color
+        run: terraform init -input=false -reconfigure -backend-config=ci-backend.hcl
 
       - name: Plan destroy
         working-directory: infra/terraform/nyayasetu

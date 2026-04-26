@@ -18,7 +18,7 @@ def _structured_blob(user_text: str) -> str | None:
     if not t:
         return None
     m = re.search(
-        r"(?:^|\n)\s*Additional details(?:\s*\(structured\))?\s*:\s*(.+)$",
+        r"(?:^|\n)\s*Additional detail(?:s)?(?:\s*\(structured\))?\s*:\s*(.+)$",
         t,
         re.I | re.S,
     )

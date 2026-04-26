@@ -40,6 +40,48 @@ if [[ -n "${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY:-}" ]]; then
   export TF_VAR_clerk_publishable_key="$NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY"
 fi
 
+# Optional: RAG (Pinecone) — read from backend/.env when TF_VAR_* is not set
+if [[ -f "$ROOT/backend/.env" ]]; then
+  if [[ -z "${TF_VAR_rag_vector_store:-}" && -z "${RAG_VECTOR_STORE:-}" ]]; then
+    line="$(grep -E '^RAG_VECTOR_STORE=.' "$ROOT/backend/.env" | head -1)" || true
+    if [[ -n "$line" ]]; then
+      export RAG_VECTOR_STORE="${line#RAG_VECTOR_STORE=}"
+    fi
+  fi
+  if [[ -n "${RAG_VECTOR_STORE:-}" ]]; then
+    export TF_VAR_rag_vector_store="${TF_VAR_rag_vector_store:-$RAG_VECTOR_STORE}"
+  fi
+  if [[ "${TF_VAR_rag_vector_store:-}" == "pinecone" || "${RAG_VECTOR_STORE:-}" == "pinecone" ]]; then
+    if [[ -z "${TF_VAR_pinecone_api_key:-}" && -z "${PINECONE_API_KEY:-}" ]]; then
+      line="$(grep -E '^PINECONE_API_KEY=.' "$ROOT/backend/.env" | head -1)" || true
+      if [[ -n "$line" ]]; then
+        export PINECONE_API_KEY="${line#PINECONE_API_KEY=}"
+      fi
+    fi
+    if [[ -n "${PINECONE_API_KEY:-}" ]]; then
+      export TF_VAR_pinecone_api_key="${TF_VAR_pinecone_api_key:-$PINECONE_API_KEY}"
+    fi
+    if [[ -z "${TF_VAR_pinecone_index:-}" && -z "${PINECONE_INDEX:-}" ]]; then
+      line="$(grep -E '^PINECONE_INDEX=.' "$ROOT/backend/.env" | head -1)" || true
+      if [[ -n "$line" ]]; then
+        export PINECONE_INDEX="${line#PINECONE_INDEX=}"
+      fi
+    fi
+    if [[ -n "${PINECONE_INDEX:-}" ]]; then
+      export TF_VAR_pinecone_index="${TF_VAR_pinecone_index:-$PINECONE_INDEX}"
+    fi
+    if [[ -z "${TF_VAR_pinecone_namespace:-}" && -z "${PINECONE_NAMESPACE+set}" ]]; then
+      line="$(grep -E '^PINECONE_NAMESPACE=' "$ROOT/backend/.env" | head -1)" || true
+      if [[ -n "$line" ]]; then
+        export PINECONE_NAMESPACE="${line#PINECONE_NAMESPACE=}"
+      fi
+    fi
+    if [[ -n "${PINECONE_NAMESPACE+set}" ]]; then
+      export TF_VAR_pinecone_namespace="${TF_VAR_pinecone_namespace:-$PINECONE_NAMESPACE}"
+    fi
+  fi
+fi
+
 # `docker build --platform` on Apple Silicon can still reuse wrong-arch layer cache. Buildx + --load avoids that.
 docker_build_amd64() {
   local image_tag="$1"
@@ -55,7 +97,7 @@ docker_build_amd64() {
 echo "==> Terraform: base stack (ECR + IAM + OIDC; no App Runner yet)"
 (
   cd "$TF_DIR"
-  terraform init -upgrade
+  "${ROOT}/scripts/nyayasetu-terraform-init.sh" -upgrade
   terraform apply -auto-approve \
     -var="create_github_oidc_provider=${TF_VAR_create_github_oidc_provider}" \
     -var="deploy_api_service=false" \

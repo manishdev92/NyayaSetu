@@ -7,6 +7,11 @@ terraform {
       version = "~> 5.0"
     }
   }
+
+  # All settings are supplied with -backend-config=… (e.g. backend.s3.hcl) — see backend.s3.hcl.example
+  # GitHub: Destroy AWS (Terraform) workflow uses the same S3 key your laptop migrates to.
+  backend "s3" {
+  }
 }
 
 provider "aws" {

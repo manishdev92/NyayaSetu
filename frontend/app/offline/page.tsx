@@ -22,7 +22,7 @@ export default function OfflinePage() {
         </p>
       </div>
       <Link
-        href="/"
+        href="/chat"
         className="inline-flex w-fit items-center justify-center rounded-xl bg-amber-800 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-amber-900"
       >
         Try again

@@ -25,6 +25,7 @@ const M = {
     ragModeLocal: "RAG: local embedding index (in-process).",
     ragModePinecone: "RAG: Pinecone vector store (server index).",
     heroBrand: "NyayaSetu",
+    brandTagline: "Legal clarity for India",
     heroTitle: "AI Legal Companion",
     heroSubtitle:
       "Use the chat to describe your issue. We stream progress like a conversational assistant and ask clarifying questions when routing is uncertain (for example lost vs stolen property), so we do not assign the wrong authority. Add your details below for the letter and local office matching. This is educational support, not a substitute for a qualified lawyer.",
@@ -134,6 +135,11 @@ const M = {
     confirmIC: "confirm on India Code",
     typicalProc: "Typical procedure (general)",
     retChunks: "Retrieved chunks",
+    caseLawH2: "Case law (research)",
+    caseLawEmpty:
+      "No licensed case-law results for this query yet. Statute and curated references above still apply. Connect a vetted case-law source in deployment when available.",
+    caseLawNote:
+      "Research panel for lawyer mode only. Citations are informational; verify on official court portals or a licensed database.",
     refSummary: "References (summary)",
     immSafety: "Immediate safety & helplines",
     keyHelplines: "Key helplines & emergency numbers",
@@ -158,6 +164,25 @@ const M = {
     chatH2: "Chat",
     chatIntro:
       "Messages stream as we analyze your issue. If something is ambiguous, we ask before generating a full draft or assigning an authority.",
+    clientModeLabel: "Using NyayaSetu as",
+    clientModeCitizen: "General user",
+    clientModeLawyer: "Lawyer / legal professional",
+    clientModeHint:
+      "Lawyer mode requests a wider legal-context window from the API (more retrieved chunks). This does not verify your profession — enable the UI flag only in deployments you trust.",
+    clientModeLawyerNeedsSignIn: "This deployment requires sign-in to use lawyer mode.",
+    clientModeLawyerNeedsPro:
+      "This deployment requires NyayaSetu Pro for lawyer mode. Upgrade or use general user mode.",
+    taskTypeLabel: "Response style",
+    taskTypeHint:
+      "Full letter: formal print-and-fill draft. Q&A first: direct answer with a short annex. Both: two short answer paragraphs, then the full letter.",
+    taskTypeLetter: "Full formal letter",
+    taskTypeQa: "Q&A first (short annex)",
+    taskTypeBoth: "Answer + full letter",
+    taskTypeConsumerFiling: "Consumer complaint filing format",
+    filingToolkitH2: "Filing toolkit (consumer)",
+    filingForumCaption: "Suggested forum caption",
+    filingPrayer: "Prayer / relief checklist",
+    filingAnnexures: "Annexure checklist",
     emptyChat: "Describe your issue below to begin.",
     streamDone: "Here is your structured guidance and draft below (you can scroll to the letter section).",
     optionalChips: "Optional: help us refine your case — you can answer the chips below, type in the box, or skip.",
@@ -252,6 +277,7 @@ const M = {
     ragModeLocal: "RAG: लोकल एम्बेडिंग इन्डेक्स (in-process)।",
     ragModePinecone: "RAG: Pinecone वेक्टर स्टोर (सर्वर इन्डेक्स)।",
     heroBrand: "NyayaSetu",
+    brandTagline: "भारत के लिए कानूनी स्पष्टता",
     heroTitle: "AI कानूनी साथी",
     heroSubtitle:
       "चैट में अपनी समस्या बताएँ। हम सहायक जैसे बातचीत में प्रगति दिखाते हैं और जब रूटिंग अनिश्चित हो (जैसे खो बनाम चोरी) तो स्पष्ट करने वाले प्रश्न पूछते हैं, ताकि गलत प्राधिकारी तय न हों। पत्र व स्थानीय दफ़्तर मिलान के लिए नीचे अपने विवरण जोड़ें। यह शैक्षणिक सहयोग है, योग्य वकील के बदले नहीं।",
@@ -356,6 +382,11 @@ const M = {
     confirmIC: "India Code पर पुष्टि करें",
     typicalProc: "सामान्य प्रक्रिया (सामान्य)",
     retChunks: "निकाले गए अंश",
+    caseLawH2: "केस कानून (शोध)",
+    caseLawEmpty:
+      "इस प्रश्न हेतु अभी कोई लाइसेंस प्राप्त केस-कानून परिणाम नहीं। ऊपर संहिता/क्यूरेटेड संदर्भ पहले लागू। उपलब्ध होने पर तैनाती में स्रोत जोड़ा जा सकता है।",
+    caseLawNote:
+      "केवल वकील मोड — प्रदर्शन सूचनात्मक; आधिकारिक पोर्टल या लाइसेंस डेटाबेस पर सत्यापित करें।",
     refSummary: "संदर्भ (सार)",
     immSafety: "तत्काल सुरक्षा व हेल्पलाइन",
     keyHelplines: "मुख्य हेल्पलाइन व आपात नंबर",
@@ -379,6 +410,25 @@ const M = {
     chatH2: "चैट",
     chatIntro:
       "हम मुद्दा समझते वक्त संदेश स्ट्रीम करते हैं। अगर अस्पष्ट है तो पूरा मसौदा/प्राधिकारी तय करने से पहले पूछेंगे।",
+    clientModeLabel: "NyayaSetu का उपयोग",
+    clientModeCitizen: "सामान्य उपयोगकर्ता",
+    clientModeLawyer: "वकील / कानूनी पेशेवर",
+    clientModeHint:
+      "वकील मोड API से अधिक कानूनी संदर्भ (अधिक खोजे गए अंश) माँगता है। यह आपके पेशे की पुष्टि नहीं करता — इसे केवल विश्वसनीय परिनियोजन में चालू रखें।",
+    clientModeLawyerNeedsSignIn: "इस सर्वर पर वकील मोड के लिए साइन-इन आवश्यक है।",
+    clientModeLawyerNeedsPro:
+      "इस सर्वर पर वकील मोड के लिए NyayaSetu Pro आवश्यक है। अपग्रेड करें या सामान्य उपयोगकर्ता मोड चुनें।",
+    taskTypeLabel: "उत्तर शैली",
+    taskTypeHint:
+      "पूर्ण पत्र: औपचारिक मसौदा। पहले प्रश्न–उत्तर: सीधा उत्तर + छोटा परिशिष्ट। दोनों: दो संक्षिप्त उत्तर पैरा, फिर पूर्ण पत्र।",
+    taskTypeLetter: "पूर्ण औपचारिक पत्र",
+    taskTypeQa: "पहले प्रश्न–उत्तर (छोटा परिशिष्ट)",
+    taskTypeBoth: "उत्तर + पूर्ण पत्र",
+    taskTypeConsumerFiling: "उपभोक्ता शिकायत फाइलिंग प्रारूप",
+    filingToolkitH2: "फाइलिंग टूलकिट (उपभोक्ता)",
+    filingForumCaption: "सुझाया गया फोरम कैप्शन",
+    filingPrayer: "प्रार्थना / राहत चेकलिस्ट",
+    filingAnnexures: "संलग्नक चेकलिस्ट",
     emptyChat: "शुरू करने के लिए नीचे अपनी समस्या लिखें।",
     streamDone: "संरचित मार्गदर्शन व मसौदा नीचे (पत्र खंड तक स्क्रॉल करें)।",
     optionalChips: "वैकल्पिक: नीचे चिप्स, बॉक्स में टाइप, या स्किप।",
@@ -473,6 +523,7 @@ const hiLatnOverrides = {
   evaluatorFacts: "Facts / placeholders",
   evaluatorRefinerNote: "Refiner note",
   langHindiLatin: "Hindi (Roman / Latin script)",
+  brandTagline: "Legal clarity for India",
   responseLanguageHint:
     "Model answers are requested in Hindi using Roman letters (Latin script), not Devanagari. You can keep this UI in English.",
   heroSubtitle:
@@ -488,6 +539,25 @@ const hiLatnOverrides = {
   voiceTooLarge: "Audio too large. Try under ~2 minutes.",
   voiceTooShort: "Clip too short. Speak a few seconds, then stop.",
   transcribeNoSpeech: "No clear speech detected. Try again closer to the mic.",
+  clientModeLabel: "Using NyayaSetu as",
+  clientModeCitizen: "General user",
+  clientModeLawyer: "Lawyer / legal professional",
+  clientModeHint:
+    "Lawyer mode = API pulls more legal chunks. Ye aapko advocate verify nahi karta — sirf trusted deploy par UI flag on rakhen.",
+  clientModeLawyerNeedsSignIn: "Is deployment par lawyer mode ke liye sign-in zaroori hai.",
+  clientModeLawyerNeedsPro:
+    "Is deployment par lawyer mode ke liye NyayaSetu Pro chahiye. Upgrade karein ya general user mode use karein.",
+  taskTypeLabel: "Response style",
+  taskTypeHint:
+    "Full letter: formal print-and-fill draft. Q&A first: direct answer + chhota annex. Both: do chhote answer paragraphs, phir full letter.",
+  taskTypeLetter: "Full formal letter",
+  taskTypeQa: "Q&A pehle (chhota annex)",
+  taskTypeBoth: "Answer + full letter",
+  taskTypeConsumerFiling: "Consumer complaint filing format",
+  filingToolkitH2: "Filing toolkit (consumer)",
+  filingForumCaption: "Suggested forum caption",
+  filingPrayer: "Prayer / relief checklist",
+  filingAnnexures: "Annexure checklist",
 } as unknown as Partial<(typeof M)["en"]>;
 
 export type MessageKey = keyof (typeof M)["en"];

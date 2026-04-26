@@ -1,6 +1,6 @@
 import json
 import re
-from typing import Any, NamedTuple
+from typing import Any, Literal, NamedTuple, cast
 
 from openai import AuthenticationError, OpenAI
 
@@ -36,6 +36,7 @@ from app.ai.authority_alignment import (
 )
 from app.ai.llm_fallback_classifier import log_llm_fallback_case
 from app.ai.output_evaluator import evaluate_generation_output, should_regenerate
+from app.research.case_law import search_case_law_references
 from app.services.final_response_builder import finalize_legal_response
 from app.ai.rag_pipeline import run_strict_rag_pipeline
 from app.config import settings
@@ -73,6 +74,7 @@ from app.services.clarification_engine import (
     should_ask_clarification,
     should_use_llm_clarification,
 )
+from app.services.clarification_followup import parse_followup_signals
 from app.services.clarification_questions_llm import generate_clarification_questions
 from app.services.llm_clarification_agent import agent_questions_to_legacy_strings, run_llm_clarification_agent
 from app.services.hybrid_case_routing import (
@@ -92,6 +94,59 @@ from app.services.legal_router import RouterResult, route_case
 from app.core.official_links import CYBER_CRIME_PORTAL, links_for_category_slug
 from app.services.legal_taxonomy import LegalClassification, Severity
 from app.trust.trust_engine import build_trust_report
+
+
+def _rag_top_k_for_client_mode(client_mode: Literal["citizen", "lawyer"]) -> int:
+    """Strict RAG retrieval window; see settings.rag_top_k_citizen / rag_top_k_lawyer (P1-2)."""
+    if client_mode == "lawyer":
+        return int(settings.rag_top_k_lawyer)
+    return int(settings.rag_top_k_citizen)
+
+
+def _build_rag_metadata_hints(
+    user_input: str,
+    *,
+    entities: list[str],
+    city: str | None,
+    taxonomy_ui: LegalClassification,
+) -> dict[str, Any]:
+    """
+    Sprint P5-2: pass classifier/intent hints to retrieval.
+    P5-1 currently consumes `act_id` / `source_year` for Pinecone metadata filters.
+    """
+    blob = f"{user_input}\n" + "\n".join(str(x) for x in entities)
+    low = blob.lower()
+    act_id = ""
+    # keep deterministic/explicit mappings; can be expanded as corpus grows
+    if "bnss" in low or "bharatiya nagarik suraksha" in low:
+        act_id = "bnss-2023"
+    elif " bns " in f" {low} " or "bharatiya nyaya sanhita" in low:
+        act_id = "bns-2023"
+    elif "crpc" in low or "code of criminal procedure" in low:
+        act_id = "crpc-1973"
+    elif "ipc" in low or "indian penal code" in low:
+        act_id = "ipc-1860"
+    elif "cpc" in low or "code of civil procedure" in low:
+        act_id = "cpc-1908"
+    elif "evidence act" in low:
+        act_id = "evidence-act-1872"
+    elif "ni act" in low or "negotiable instruments" in low:
+        act_id = "ni-act-1881"
+
+    year_m = re.search(r"\b(19|20)\d{2}\b", blob)
+    source_year = int(year_m.group(0)) if year_m else None
+    hints: dict[str, Any] = {}
+    if act_id:
+        hints["act_id"] = act_id
+    if source_year is not None:
+        hints["source_year"] = source_year
+    # keep these for future retrieval features (P5-2); harmless if unused by vector store.
+    if city and str(city).strip():
+        hints["city_hint"] = str(city).strip()
+    if taxonomy_ui.get("jurisdiction_type"):
+        hints["jurisdiction_type"] = str(taxonomy_ui.get("jurisdiction_type"))
+    return hints
+
 
 class IntentPrefetch(NamedTuple):
     """Snapshot of intent pipeline — reuse after streaming clarification check."""
@@ -517,6 +572,53 @@ def _formatter_language_addon(response_language: str) -> str:
     )
 
 
+TaskType = Literal["draft_letter", "qa_only", "draft_with_qa", "consumer_complaint_filing"]
+
+
+def _normalize_task_type(task_type: str | None) -> TaskType:
+    t = (task_type or "draft_letter").strip().lower()
+    if t in ("draft_letter", "qa_only", "draft_with_qa", "consumer_complaint_filing"):
+        return cast(TaskType, t)
+    return "draft_letter"
+
+
+def _task_type_formatter_addon(task_type: TaskType) -> str:
+    """Sprint P2: branch formatter behaviour (prepended to strict_addon chain via system message tail)."""
+    if task_type == "qa_only":
+        return (
+            "\n\n## TASK_TYPE = qa_only (mandatory)\n"
+            "- The user asked for **Q&A / memo style**, not a long postal print-and-fill letter as the main deliverable.\n"
+            "- **`explanation`**: make this the **primary** readable answer — clear headings, bullets where useful, integrate USER CONTEXT; cite statutes **only** from "
+            "**LEGAL_COMPANION_JSON.retrieved_laws** (same limits as the base system).\n"
+            "- **`document`**: a **compact annex** (roughly one screen): checklist, key dates/parties placeholders, and a **short** formal segment only if "
+            "**AUTHORITY_LOCK** requires a specific addressee (e.g. SHO). Keep **AUTHORITY_LOCK** and jurisdiction JSON **fully** respected. "
+            "Prefer **no** repeated **PRINT_FILL_FOOTER** handwriting block for qa_only; a single compact print header block is optional and only when police-primary.\n"
+            "- **`next_steps`**: 3–7 practical bullet strings.\n"
+        )
+    if task_type == "draft_with_qa":
+        return (
+            "\n\n## TASK_TYPE = draft_with_qa (mandatory)\n"
+            "- Open **`explanation`** with **two short paragraphs** that **directly answer** the user's main question, then continue with the usual supportive explanation.\n"
+            "- **`document`**: still the **full formal letter** with **## PRINT_FILL_HEADER**, body, and **## PRINT_FILL_FOOTER** per all default rules.\n"
+        )
+    if task_type == "consumer_complaint_filing":
+        return (
+            "\n\n## TASK_TYPE = consumer_complaint_filing (mandatory)\n"
+            "- Prefer a filing-ready consumer complaint structure over a generic letter.\n"
+            "- **`document`** must include these titled sections (with concise placeholders where facts are missing):\n"
+            "  1) Forum caption (Before District Consumer Disputes Redressal Commission ...)\n"
+            "  2) Parties (Complainant and Opposite Party)\n"
+            "  3) Jurisdiction statement (territorial + pecuniary as alleged)\n"
+            "  4) Facts in chronological numbered points\n"
+            "  5) Deficiency / unfair practice grounds (plain language)\n"
+            "  6) Prayer / reliefs (itemized: repair/replace/refund/compensation/litigation costs)\n"
+            "  7) Interim relief line (if urgency alleged)\n"
+            "  8) Verification statement + place/date placeholders\n"
+            "- Keep tone professional and filing-oriented; avoid repetitive educational padding inside document.\n"
+        )
+    return ""
+
+
 def _maybe_override_for_multi_intent(
     taxonomy: LegalClassification,
     classifier_meta: ClassifierMeta,
@@ -880,6 +982,7 @@ def _build_clarification_response(
                 city,
                 response_language=response_language,
             ),
+            "case_law_references": [],
         }
     )
 
@@ -949,6 +1052,7 @@ def _regenerate_until_authority_aligned(
     taxonomy_ui: LegalClassification,
     authority_block: dict[str, Any],
     language_addon: str = "",
+    task_type_addon: str = "",
 ) -> None:
     """Up to 2 extra formatter passes if draft violates deterministic authority routing (mutates data)."""
     for _ in range(2):
@@ -976,6 +1080,7 @@ def _regenerate_until_authority_aligned(
                 user_message,
                 strict_addon=STRICT_REGEN_ADDON + align_addon,
                 language_addon=language_addon,
+                task_type_addon=task_type_addon,
             )
             data["document"] = new.get("document", "")
             data["explanation"] = new.get("explanation", "")
@@ -1031,12 +1136,221 @@ def _sanitize_garbled_police_station_line(text: str) -> str:
     return "\n".join(out)
 
 
-def _normalize_document_spacing(text: str) -> str:
+def _strip_police_only_contact_line_for_non_police(text: str, issue_type: str) -> str:
+    """
+    Keep police-only contact placeholder out of non-police drafts (e.g., land/revenue).
+    """
+    if str(issue_type or "").strip().lower() == "police":
+        return text
+    out: list[str] = []
+    for line in text.split("\n"):
+        low = line.strip().lower()
+        if (
+            ("official contact to be noted by you" in low and ("chowki" in low or "station" in low))
+            or ("aadhikarik sampark" in low)
+            or ("आधिकारिक संपर्क" in low)
+        ):
+            continue
+        out.append(line)
+    return "\n".join(out)
+
+
+def _strip_top_print_fill_block(text: str) -> str:
+    lines = text.split("\n")
+    out_start = 0
+    matched = 0
+    i = 0
+    while i < len(lines):
+        s = lines[i].strip()
+        low = s.lower()
+        if not s:
+            i += 1
+            continue
+        if low in ("print & fill", "print and fill", "## print_fill_header"):
+            matched += 1
+            i += 1
+            continue
+        if (
+            low.startswith("date:")
+            or low.startswith("tithi:")
+            or low.startswith("दिनांक")
+            or low.startswith("तिथि")
+            or low.startswith("name (complainant")
+            or low.startswith("naam")
+            or low.startswith("नाम")
+            or low.startswith("mobile number:")
+            or low.startswith("mobile:")
+            or low.startswith("मोबाइल")
+            or low.startswith("full postal address:")
+            or low.startswith("poora postal pata:")
+            or low.startswith("पूरा डाक")
+            or low.startswith("official contact to be noted by you")
+            or low.startswith("aadhikarik sampark")
+            or low.startswith("आधिकारिक संपर्क")
+        ):
+            matched += 1
+            i += 1
+            continue
+        break
+    if matched >= 3:
+        out_start = i
+        while out_start < len(lines) and not lines[out_start].strip():
+            out_start += 1
+    return "\n".join(lines[out_start:])
+
+
+def _strip_markdown_artifacts(text: str) -> str:
+    out: list[str] = []
+    for raw in text.split("\n"):
+        line = re.sub(r"^\s{0,3}#{1,6}\s*", "", raw)
+        line = re.sub(r"\*\*(.*?)\*\*", r"\1", line)
+        line = re.sub(r"__(.*?)__", r"\1", line)
+        line = re.sub(r"`([^`]*)`", r"\1", line)
+        line = re.sub(r"^\s*[-*]\s+", "", line)
+        if line.strip() in ("## PRINT_FILL_HEADER", "## PRINT_FILL_FOOTER"):
+            continue
+        out.append(line)
+    return "\n".join(out)
+
+
+def _dedupe_consecutive_lines(text: str) -> str:
+    out: list[str] = []
+    prev_key = ""
+    for line in text.split("\n"):
+        key = re.sub(r"\s+", " ", line.strip().lower())
+        if key and key == prev_key:
+            continue
+        out.append(line)
+        prev_key = key if key else prev_key
+    return "\n".join(out)
+
+
+def _append_bottom_party_block(text: str, *, user_details: dict[str, str | None] | None, city: str | None, issue_type: str) -> str:
+    base = str(text or "")
+    marker = "Complainant / Applicant Details"
+    if marker in base:
+        base = base.split(marker, 1)[0].rstrip()
+    ud = user_details or {}
+    name = (ud.get("full_name") or "").strip() if isinstance(ud.get("full_name"), str) else ""
+    phone = (ud.get("phone") or "").strip() if isinstance(ud.get("phone"), str) else ""
+    address = (ud.get("address") or "").strip() if isinstance(ud.get("address"), str) else ""
+    city_v = (city or "").strip()
+    lines = [
+        "",
+        "Complainant / Applicant Details",
+        f"Date: {'[DD/MM/YYYY]' }",
+        f"Name: {name or '[Complainant / Applicant Name]'}",
+        f"Mobile: {phone or '[Mobile Number]'}",
+        f"Address: {address or '[Full Postal Address]'}",
+        f"City/District: {city_v or '[City / District]'}",
+        f"Place: {city_v or '[Place]'}",
+    ]
+    if str(issue_type or "").strip().lower() == "police":
+        lines.append("Police Station Contact (as displayed on official board/portal): [To be filled]")
+    lines.append("Signature: ________________________________")
+    return base.strip() + "\n\n" + "\n".join(lines).strip()
+
+
+def _normalize_document_spacing(text: str, *, issue_type: str = "") -> str:
     text = _strip_accidental_json_document(text)
     text = re.sub(r"\r\n", "\n", text)
     text = _sanitize_garbled_police_station_line(text)
+    text = _strip_police_only_contact_line_for_non_police(text, issue_type=issue_type)
     text = re.sub(r"\n{3,}", "\n\n", text)
     return text.strip()
+
+
+def _postprocess_document(
+    text: str,
+    *,
+    issue_type: str,
+    user_details: dict[str, str | None] | None,
+    city: str | None,
+) -> str:
+    out = _normalize_document_spacing(text, issue_type=issue_type)
+    out = _strip_top_print_fill_block(out)
+    out = _strip_markdown_artifacts(out)
+    out = _dedupe_consecutive_lines(out)
+    out = re.sub(r"\n{3,}", "\n\n", out).strip()
+    return _append_bottom_party_block(out, user_details=user_details, city=city, issue_type=issue_type)
+
+
+def _has_hard_emergency_signal(user_input: str) -> bool:
+    low = str(user_input or "").strip().lower()
+    if not low:
+        return False
+    return bool(
+        re.search(
+            r"\b("
+            r"happening\s+now|right\s+now|ongoing|"
+            r"injured|injury|bleeding|unconscious|critical|hospital\s+now|"
+            r"gun|knife|armed|kidnap|abduct|"
+            r"rape|sexual\s+assault|molested|"
+            r"riot|mob|communal\s+clash|"
+            r"fire|blaze|burning"
+            r")\b",
+            low,
+        )
+    )
+
+
+def _first_rupee_amount(user_input: str) -> int | None:
+    txt = str(user_input or "")
+    m = re.search(r"(?:rs\.?|inr|₹)\s*([0-9][0-9,]{2,})", txt, re.I)
+    if not m:
+        return None
+    raw = m.group(1).replace(",", "")
+    try:
+        n = int(raw)
+    except ValueError:
+        return None
+    return n if n > 0 else None
+
+
+def _build_consumer_filing_blocks(
+    *,
+    user_input: str,
+    category: str,
+    task_type: TaskType,
+    authority_primary: str,
+    city: str | None = None,
+) -> dict[str, Any]:
+    if category != "consumer" and task_type != "consumer_complaint_filing":
+        return {"forum_caption": None, "prayer_items": [], "annexure_checklist": []}
+    amt = _first_rupee_amount(user_input)
+    amount_hint = f"₹{amt}" if isinstance(amt, int) else "₹____"
+    prayer_items = [
+        "Direct the opposite party to repair or replace the defective product within a fixed time.",
+        f"Refund the service/warranty amount paid ({amount_hint}) with applicable interest, if relief is not provided.",
+        "Award compensation for harassment and mental agony (₹____ placeholder for filing).",
+        "Award litigation costs and any other relief deemed fit by the Commission.",
+    ]
+    annexures = [
+        "Invoice / proof of purchase of product.",
+        "Warranty card / extended warranty or service plan document.",
+        "Payment proof for service plan / warranty extension.",
+        "Service request IDs, complaint numbers, technician visit logs, call records/screenshots.",
+        "Photos/videos showing product defect and non-functionality.",
+        "Copy of legal notice / email reminders (if any).",
+    ]
+    ap = str(authority_primary or "").strip()
+    ap_low = ap.lower()
+    if "state commission" in ap_low:
+        forum_caption = "Before the State Consumer Disputes Redressal Commission, [State]"
+    elif "national commission" in ap_low:
+        forum_caption = "Before the National Consumer Disputes Redressal Commission, New Delhi"
+    else:
+        forum_caption = (
+            "Before the District Consumer Disputes Redressal Commission, "
+            f"[District], [State] (territorial jurisdiction over {city.strip()})"
+            if isinstance(city, str) and city.strip()
+            else "Before the District Consumer Disputes Redressal Commission, [District], [State]"
+        )
+    return {
+        "forum_caption": forum_caption,
+        "prayer_items": prayer_items,
+        "annexure_checklist": annexures,
+    }
 
 
 def _build_user_blob(user_input: str, user_details: dict[str, str | None] | None) -> str:
@@ -1066,8 +1380,9 @@ def _run_formatter(
     *,
     strict_addon: str = "",
     language_addon: str = "",
+    task_type_addon: str = "",
 ) -> dict[str, Any]:
-    sys_content = FORMATTER_SYSTEM_PROMPT + language_addon + strict_addon
+    sys_content = FORMATTER_SYSTEM_PROMPT + language_addon + task_type_addon + strict_addon
     final = client.chat.completions.create(
         model=settings.openai_model,
         messages=[
@@ -1090,9 +1405,13 @@ def generate_legal_response(
     _intent_prefetch: IntentPrefetch | None = None,
     skip_clarification: bool = False,
     response_language: str = "en",
+    client_mode: Literal["citizen", "lawyer"] = "citizen",
+    task_type: str = "draft_letter",
 ) -> dict[str, Any]:
     if not settings.openai_api_key:
         raise ValueError("OPENAI_API_KEY is not configured")
+
+    task_type_n = _normalize_task_type(task_type)
 
     user_details = user_details or {}
     city = user_details.get("city")
@@ -1156,6 +1475,15 @@ def generate_legal_response(
             )
 
     is_hybrid_case = bool(classifier_meta.get("is_hybrid"))
+    followup_sig = parse_followup_signals(user_input)
+    no_force_override = (
+        followup_sig.no_force_peaceful
+        and not followup_sig.force_or_threat_yes
+        and not _has_hard_emergency_signal(user_input)
+    )
+    if no_force_override and bool(classifier_meta.get("is_emergency")):
+        # Structured follow-up answers explicitly deny force/violence; keep this request on normal legal flow.
+        classifier_meta = cast(ClassifierMeta, {**dict(classifier_meta), "is_emergency": False})
     generation_mode = "EMERGENCY_WITH_DRAFT" if bool(classifier_meta.get("is_emergency")) else "NORMAL"
     use_emergency_template = generation_mode == "EMERGENCY_WITH_DRAFT"
     router_result = route_case(
@@ -1202,7 +1530,20 @@ def generate_legal_response(
     if _crisis_triage:
         companion = build_crisis_triage_companion_payload(authority_block=authority_block)
     else:
-        rag_result = run_strict_rag_pipeline(user_input, str(taxonomy_ui["issue_type"]), top_k=8)
+        rag_hints = _build_rag_metadata_hints(
+            user_input,
+            entities=[str(x) for x in (interpretation.get("entities") or []) if str(x).strip()],
+            city=city if isinstance(city, str) else None,
+            taxonomy_ui=taxonomy_ui,
+        )
+        rag_result = run_strict_rag_pipeline(
+            user_input,
+            str(taxonomy_ui["issue_type"]),
+            top_k=_rag_top_k_for_client_mode(client_mode),
+            client_mode=client_mode,
+            task_type=task_type_n,
+            metadata_hints=rag_hints,
+        )
         companion = build_legal_companion_payload(
             user_input=user_input,
             city=city,
@@ -1457,6 +1798,16 @@ def generate_legal_response(
                 "offences (use placeholders for IPC/BNSS section numbers if unknown). Match the tone to the "
                 "gravity of harm to public property or a police installation.\n"
             )
+        authority_format_addon = (
+            "\n\n---\nFINAL_FORMAT_VALIDATION (mandatory):\n"
+            "1) Detect the authority from AUTHORITY_BLOCK_JSON / JURISDICTION_ROUTER_JSON first; do not mix authority formats.\n"
+            "2) Keep document plain text, left-aligned, print-friendly. No markdown headings, bold markers, or decorative styling.\n"
+            "3) Convert user narrative into clear, numbered factual sequence (date/place/parties/issue).\n"
+            "4) Auto-use available user/location details where known; keep placeholders for missing values.\n"
+            "5) Include only authority-relevant sections (police FIR prayer OR consumer prayer OR court relief) — not all at once.\n"
+            "6) Remove duplicated lines and keep tone consistent, concise, and professional.\n"
+            "7) Do NOT start with top 'Print & fill' lines.\n"
+        )
         user_message = (
             f"{_build_user_blob(user_input, user_details)}\n\n"
             f"---\nLEGAL_CLASSIFICATION (taxonomy):\n{classification_json}\n\n"
@@ -1468,14 +1819,20 @@ def generate_legal_response(
             f"---\nJURISDICTION_ROUTER_JSON:\n{jurisdiction_router_json}\n\n"
             f"---\nLEGAL_COMPANION_JSON:\n{companion_json}\n\n"
             f"---\nAUTHORITY_BLOCK_JSON:\n{authority_json}\n"
-            f"{hybrid_instruction}{crisis_formatter_addon}"
+            f"{hybrid_instruction}{crisis_formatter_addon}{authority_format_addon}"
         )
 
         client = OpenAI(api_key=settings.openai_api_key)
         lang_addon = _formatter_language_addon(response_language)
+        task_type_addon = _task_type_formatter_addon(task_type_n)
 
         try:
-            data = _run_formatter(client, user_message, language_addon=lang_addon)
+            data = _run_formatter(
+                client,
+                user_message,
+                language_addon=lang_addon,
+                task_type_addon=task_type_addon,
+            )
         except AuthenticationError as e:
             raise ValueError(
                 "OpenAI rejected your API key (401). Create a new secret key at "
@@ -1499,6 +1856,7 @@ def generate_legal_response(
                     user_message,
                     strict_addon=STRICT_REGEN_ADDON,
                     language_addon=lang_addon,
+                    task_type_addon=task_type_addon,
                 )
                 document = data.get("document", "")
                 explanation = data.get("explanation", "")
@@ -1522,6 +1880,7 @@ def generate_legal_response(
                     user_message,
                     strict_addon=STRICT_REGEN_ADDON + QUALITY_REGEN_ADDON,
                     language_addon=lang_addon,
+                    task_type_addon=task_type_addon,
                 )
                 document = data.get("document", "")
                 explanation = data.get("explanation", "")
@@ -1544,6 +1903,7 @@ def generate_legal_response(
             taxonomy_ui=taxonomy_ui,
             authority_block=authority_block,
             language_addon=lang_addon,
+            task_type_addon=task_type_addon,
         )
         document = str(_alignment_bundle.get("document") or "")
         explanation = str(_alignment_bundle.get("explanation") or "")
@@ -1715,7 +2075,13 @@ def generate_legal_response(
         law_refs_verified_only=bool(verified_laws_only),
     )
 
-    doc_final = _normalize_document_spacing(str(document))
+    _issue_type = str(taxonomy_ui.get("issue_type") or "")
+    doc_final = _postprocess_document(
+        str(document),
+        issue_type=_issue_type,
+        user_details=user_details,
+        city=city if isinstance(city, str) else None,
+    )
     still_bad_align, _ = document_violates_authority_alignment(
         doc_final,
         classifier_meta=classifier_meta,
@@ -1806,13 +2172,31 @@ def generate_legal_response(
                 router_intent=str(classifier_meta.get("router_intent") or ""),
             )
             if document_revised_out.strip():
-                document_revised_out = _normalize_document_spacing(document_revised_out)
+                document_revised_out = _postprocess_document(
+                    document_revised_out,
+                    issue_type=_issue_type,
+                    user_details=user_details,
+                    city=city if isinstance(city, str) else None,
+                )
         except Exception:
             document_evaluator_out = None
             document_revised_out = ""
 
+    case_law_out = search_case_law_references(
+        str(user_input).strip(), client_mode=str(client_mode or "citizen")
+    )
+    filing_blocks = _build_consumer_filing_blocks(
+        user_input=str(user_input).strip(),
+        category=str(classifier_meta.get("category") or ""),
+        task_type=task_type_n,
+        authority_primary=str(router_result.get("primary_authority") or ""),
+        city=city if isinstance(city, str) else None,
+    )
+
     return finalize_legal_response(
         {
+        "client_mode": client_mode,
+        "task_type": task_type_n,
         "document": doc_final,
         "draft": doc_final,
         "explanation": explanation_out,
@@ -1859,5 +2243,9 @@ def generate_legal_response(
         "crisis_triage_mode": _crisis_triage,
         "document_evaluator": document_evaluator_out,
         "document_revised": document_revised_out,
+        "case_law_references": case_law_out,
+        "forum_caption": filing_blocks["forum_caption"],
+        "prayer_items": filing_blocks["prayer_items"],
+        "annexure_checklist": filing_blocks["annexure_checklist"],
         }
     )

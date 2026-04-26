@@ -1,0 +1,29 @@
+# P7-2 — optional live Pinecone smoke (not on every PR; add PINECONE_API_KEY + PINECONE_INDEX in repo secrets)
+name: Pinecone smoke
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      RUN_PINECONE_SMOKE: "1"
+      PINECONE_API_KEY: ${{ secrets.PINECONE_API_KEY }}
+      PINECONE_INDEX: ${{ secrets.PINECONE_INDEX }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install
+        run: |
+          pip install -r requirements.txt
+          pip install "pytest>=7.0.0"
+      - name: describe_index_stats (live, read-only)
+        run: python -m pytest tests/test_pinecone_smoke.py -q -ra

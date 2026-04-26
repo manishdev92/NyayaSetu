@@ -4,6 +4,7 @@
 !**/.env.*.example
 **/.clerk/
 backend/.venv/
+backend/.venv-ci/
 backend/**/__pycache__/
 # frontend/ — see frontend/.gitignore; common Next patterns at repo root
 frontend/.env.local
@@ -11,10 +12,13 @@ frontend/.next/
 frontend/node_modules/
 backend/logs/llm_fallback_cases.json
 backend/logs/authority_mismatch.json
+backend/app/logs/authority_mismatch.json
 backend/var/
 
 # Terraform
 **/.terraform/
+# Local S3 remote backend (bucket name); copy from backend.s3.hcl.example
+infra/terraform/nyayasetu/backend.s3.hcl
 *.tfstate
 *.tfstate.*
 *.tfvars

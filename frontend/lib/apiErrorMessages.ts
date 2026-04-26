@@ -24,6 +24,8 @@ const SERVER_OR_SSE_ERROR_KEY: Record<string, MessageKey> = {
   dashboard_user_required: "dashboardUserRequired",
   dashboard_case_invalid: "dashboardCaseInvalid",
   dashboard_case_not_found: "dashboardCaseNotFound",
+  lawyer_mode_requires_sign_in: "clientModeLawyerNeedsSignIn",
+  lawyer_mode_requires_pro: "clientModeLawyerNeedsPro",
 };
 
 function localizeServerCode(locale: AppLocale, code: string | undefined, fallback: string): string {

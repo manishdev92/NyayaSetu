@@ -59,6 +59,13 @@ def _query_hash(query: str) -> str:
     return hashlib.sha256((query or "").encode("utf-8")).hexdigest()[:20]
 
 
+def _normalize_task_type_for_log(task_type: str) -> str:
+    t = (task_type or "draft_letter").strip().lower()
+    if t in ("draft_letter", "qa_only", "draft_with_qa", "consumer_complaint_filing"):
+        return t
+    return "draft_letter"
+
+
 def _log_rag_observability(
     *,
     query_hash: str,
@@ -70,9 +77,12 @@ def _log_rag_observability(
     embedding_used: bool,
     confidence: float,
     n_retrieved: int,
+    client_mode: str = "citizen",
+    task_type: str = "draft_letter",
+    pinecone_fetch: int | None = None,
 ) -> None:
-    """Structured one-line log (JSON payload) for retrieval metrics — no PII in payload."""
-    payload = {
+    """Structured one-line log (JSON payload) for retrieval metrics — no PII in payload (P3-3)."""
+    payload: dict[str, Any] = {
         "query_hash": query_hash,
         "issue_type": issue_type,
         "top_k": top_k,
@@ -82,7 +92,11 @@ def _log_rag_observability(
         "embedding_used": embedding_used,
         "confidence": round(float(confidence), 4),
         "n_retrieved": n_retrieved,
+        "client_mode": str(client_mode) if str(client_mode) in ("citizen", "lawyer") else "citizen",
+        "task_type": _normalize_task_type_for_log(task_type),
     }
+    if pinecone_fetch is not None:
+        payload["pinecone_fetch"] = int(pinecone_fetch)
     logger.info("rag_pipeline %s", json.dumps(payload, separators=(",", ":"), ensure_ascii=False))
 
 
@@ -102,12 +116,18 @@ def run_strict_rag_pipeline(
     issue_type: str,
     *,
     top_k: int = 5,
+    client_mode: Literal["citizen", "lawyer"] = "citizen",
+    task_type: str = "draft_letter",
+    metadata_hints: dict[str, Any] | None = None,
 ) -> RagPipelineOut:
     """
     Strict pipeline: classify domain filter → relevance score → rank → top-k.
     Only retrieved chunk text may be cited as law content downstream.
     """
     qh = _query_hash(query)
+    pine_fetch: int | None = None
+    if settings.rag_vector_store == "pinecone":
+        pine_fetch = settings.pinecone_query_fetch_size(str(client_mode))
 
     pine_ok = False
     if settings.rag_vector_store == "pinecone":
@@ -118,7 +138,8 @@ def run_strict_rag_pipeline(
                 query,
                 issue_type,
                 top_k=top_k,
-                max_candidates=settings.pinecone_query_candidates,
+                max_candidates=pine_fetch or settings.pinecone_query_candidates,
+                metadata_hints=metadata_hints,
             )
         except Exception as e:
             logger.warning("rag_pinecone path failed, using local: %s", e)
@@ -141,6 +162,9 @@ def run_strict_rag_pipeline(
                 embedding_used=False,
                 confidence=0.0,
                 n_retrieved=0,
+                client_mode=client_mode,
+                task_type=task_type,
+                pinecone_fetch=pine_fetch,
             )
             return RagPipelineOut(
                 retrieved_laws=[],
@@ -204,6 +228,9 @@ def run_strict_rag_pipeline(
             embedding_used=embedding_used,
             confidence=0.0,
             n_retrieved=0,
+            client_mode=client_mode,
+            task_type=task_type,
+            pinecone_fetch=pine_fetch,
         )
         return RagPipelineOut(
             retrieved_laws=[],
@@ -233,5 +260,8 @@ def run_strict_rag_pipeline(
         embedding_used=embedding_used,
         confidence=out["confidence_score"],
         n_retrieved=len(retrieved),
+        client_mode=client_mode,
+        task_type=task_type,
+        pinecone_fetch=pine_fetch,
     )
     return out

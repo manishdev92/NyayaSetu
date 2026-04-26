@@ -6,6 +6,8 @@ import re
 
 import pytest
 
+pytestmark = pytest.mark.rag
+
 from app.ai import rag_pipeline as rp
 
 
@@ -20,7 +22,13 @@ def test_query_hash_pii_safe_deterministic() -> None:
     assert "Jane" not in msg and "9999" not in msg and "Doe" not in msg
 
 
-def test_rag_log_empty_pool_no_pii_in_message(caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_rag_log_empty_pool_no_pii_in_message(
+    caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.config import settings
+
+    # Force in-process JSON pool so this test is not affected by optional Pinecone env in CI.
+    monkeypatch.setattr(settings, "rag_vector_store", "local", raising=False)
     monkeypatch.setattr(rp, "load_knowledge_entries", lambda: [{"domain": "civil"}])
     monkeypatch.setattr(rp, "filter_entries_by_issue_type", lambda raw, it: [])
 
@@ -38,6 +46,11 @@ def test_rag_log_empty_pool_no_pii_in_message(caplog: pytest.LogCaptureFixture, 
     assert p["grounding_label"] == "no_match"
     assert p["pool_size"] == 0
     assert p["top_scores"] == []
+    assert p.get("client_mode") == "citizen"
+    assert p.get("task_type") == "draft_letter"
+    if "pinecone_fetch" in p:
+        assert isinstance(p["pinecone_fetch"], int)
+        assert p["pinecone_fetch"] >= 0
 
 
 def test_rag_log_full_path_has_grounding_and_top_scores(
@@ -56,8 +69,31 @@ def test_rag_log_full_path_has_grounding_and_top_scores(
     assert p["n_retrieved"] == len(r["retrieved_laws"])
     assert p["grounding_label"] in ("rag_retrieved", "general_not_case_specific", "no_match")
     assert "top_scores" in p
+    assert p.get("client_mode") == "citizen"
+    assert p.get("task_type") == "draft_letter"
     if p["n_retrieved"] == 0:
         return
     # Log top-k window matches pipeline ranking length (≤ top_k)
     assert len(p["top_scores"]) <= 2
     assert "abcdef" not in line
+
+
+def test_rag_log_includes_tier_and_task_type(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    q = "civil_petition_docket_xyz_test_task_type"
+    with caplog.at_level(logging.INFO, logger="app.ai.rag_pipeline"):
+        rp.run_strict_rag_pipeline(
+            q,
+            "general",
+            top_k=1,
+            client_mode="lawyer",
+            task_type="qa_only",
+        )
+    line = next((x for x in caplog.messages if "rag_pipeline {" in x and "query_hash" in x), "")
+    m = re.search(r"rag_pipeline (\{.+\})\s*$", line)
+    assert m
+    p = json.loads(m.group(1))
+    assert p["client_mode"] == "lawyer"
+    assert p["task_type"] == "qa_only"
+    assert p["query_hash"] == rp._query_hash(q)

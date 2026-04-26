@@ -2,7 +2,7 @@
 
 This document describes how a user’s text (and optional documents) moves through the **web client**, **API**, **classification and safety layers**, and **LLM output** to produce the legal-style answer shown in the UI. It is aligned with the current backend (notably `app/api/v1/generate.py`, `app/services/ai_service.py`, and related services).
 
-**Related:** [GOLDEN_ROUTING.md](../backend/docs/GOLDEN_ROUTING.md) (tests and regression surfaces) · [ENVIRONMENT.md](ENVIRONMENT.md)
+**Related:** [GOLDEN_ROUTING.md](../backend/docs/GOLDEN_ROUTING.md) (tests and regression surfaces) · [ENVIRONMENT.md](ENVIRONMENT.md) · [USER_PERSONAS.md](USER_PERSONAS.md) (citizen vs lawyer goals and disclaimers) · [CORPUS_V1_BOUNDARY.md](CORPUS_V1_BOUNDARY.md) (what may enter automated ingest v1) · [CLIENT_MODE_DESIGN.md](CLIENT_MODE_DESIGN.md) (optional `client_mode` / `X-Client-Mode` on generate)
 
 ---
 

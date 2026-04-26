@@ -195,8 +195,49 @@ class Settings(BaseSettings):
     pinecone_index: str = "nyaya-legal-kb"
     # Optional; default namespace is "" (Pinecone default)
     pinecone_namespace: str = ""
-    # Pre-issue-filter fetch size; final list is still issue-filtered in-app
+    # Pre-issue-filter fetch size; final list is still issue-filtered in-app. Citizen tier; lawyer override below.
     pinecone_query_candidates: int = 48
+    # Optional: larger Pinecone pre-fetch for lawyer tier (cost). None => implicit bump (base + 24, cap 200).
+    pinecone_query_candidates_lawyer: int | None = Field(
+        default=None,
+        validation_alias=AliasChoices(
+            "PINECONE_QUERY_CANDIDATES_LAWYER",
+            "pinecone_query_candidates_lawyer",
+        ),
+    )
+    # Strict RAG `top_k` by client_mode (P1-2). RAG_TOP_K_DEFAULT is an alias for RAG_TOP_K_CITIZEN (Sprint P3-1).
+    rag_top_k_citizen: int = Field(
+        default=8,
+        validation_alias=AliasChoices("RAG_TOP_K_CITIZEN", "RAG_TOP_K_DEFAULT", "rag_top_k_citizen"),
+    )
+    rag_top_k_lawyer: int = 12
+
+    # Sprint 6: case-law research adapter — `off` = hidden; `noop` = empty placeholder; `tavily_preview` = web research snippets
+    case_law_mode: str = Field(
+        default="off",
+        validation_alias=AliasChoices("CASE_LAW_MODE", "case_law_mode"),
+    )
+    case_law_max_results: int = Field(
+        default=5,
+        validation_alias=AliasChoices("CASE_LAW_MAX_RESULTS", "case_law_max_results"),
+    )
+
+    @field_validator("case_law_mode", mode="before")
+    @classmethod
+    def _norm_case_law_mode(cls, v: object) -> str:
+        s = str(v or "off").strip().lower()
+        if s in ("off", "noop", "tavily_preview"):
+            return s
+        return "off"
+
+    @field_validator("case_law_max_results", mode="before")
+    @classmethod
+    def _bounds_case_law_max_results(cls, v: object) -> int:
+        try:
+            n = int(v) if v is not None else 5
+        except (TypeError, ValueError):
+            return 5
+        return max(1, min(10, n))
 
     @field_validator("rag_vector_store", mode="before")
     @classmethod
@@ -216,6 +257,114 @@ class Settings(BaseSettings):
         except (TypeError, ValueError):
             return 48
         return max(8, min(200, n))
+
+    @field_validator("pinecone_query_candidates_lawyer", mode="before")
+    @classmethod
+    def _rag_candidates_lawyer_bounds(cls, v: object) -> int | None:
+        if v is None or v == "":
+            return None
+        try:
+            n = int(v)
+        except (TypeError, ValueError):
+            return None
+        return max(8, min(200, n))
+
+    @field_validator("rag_top_k_citizen", mode="before")
+    @classmethod
+    def _rag_top_k_citizen_bounds(cls, v: object) -> int:
+        try:
+            n = int(v) if v is not None else 8
+        except (TypeError, ValueError):
+            return 8
+        return max(3, min(24, n))
+
+    @field_validator("rag_top_k_lawyer", mode="before")
+    @classmethod
+    def _rag_top_k_lawyer_bounds(cls, v: object) -> int:
+        try:
+            n = int(v) if v is not None else 12
+        except (TypeError, ValueError):
+            return 12
+        return max(3, min(24, n))
+
+    # Subset of citizen,lawyer advertised to the UI (GET /config, /ready). Env: CLIENT_MODES_SUPPORTED
+    client_modes_supported_csv: str = Field(
+        default="citizen,lawyer",
+        validation_alias=AliasChoices("CLIENT_MODES_SUPPORTED", "client_modes_supported_csv"),
+    )
+
+    @field_validator("client_modes_supported_csv", mode="before")
+    @classmethod
+    def _norm_client_modes_csv(cls, v: object) -> str:
+        if v is None:
+            return "citizen,lawyer"
+        s = str(v).strip().lower().replace(" ", "")
+        return s if s else "citizen,lawyer"
+
+    # P1-1: when true, `client_mode=lawyer` on /generate requires non-empty X-User-Id (Clerk id).
+    lawyer_client_mode_requires_user_id: bool = Field(
+        default=False,
+        validation_alias=AliasChoices(
+            "LAWYER_CLIENT_MODE_REQUIRES_USER_ID",
+            "lawyer_client_mode_requires_user_id",
+        ),
+    )
+
+    @field_validator("lawyer_client_mode_requires_user_id", mode="before")
+    @classmethod
+    def _truthy_lawyer_requires_uid(cls, v: object) -> bool:
+        if isinstance(v, bool):
+            return v
+        if isinstance(v, str):
+            return v.strip().lower() in ("1", "true", "yes", "on")
+        return False
+
+    # P1-1: when true, lawyer mode on /generate also requires an active Pro row (Stripe billing only).
+    lawyer_client_mode_requires_pro: bool = Field(
+        default=False,
+        validation_alias=AliasChoices(
+            "LAWYER_CLIENT_MODE_REQUIRES_PRO",
+            "lawyer_client_mode_requires_pro",
+        ),
+    )
+
+    @field_validator("lawyer_client_mode_requires_pro", mode="before")
+    @classmethod
+    def _truthy_lawyer_requires_pro(cls, v: object) -> bool:
+        if isinstance(v, bool):
+            return v
+        if isinstance(v, str):
+            return v.strip().lower() in ("1", "true", "yes", "on")
+        return False
+
+    def lawyer_pro_gate_active(self) -> bool:
+        """True when the API will enforce Pro for `client_mode=lawyer` (only meaningful with Stripe billing)."""
+        return bool(self.lawyer_client_mode_requires_pro and str(self.billing_mode).strip().lower() == "stripe")
+
+    def get_client_modes_supported(self) -> list[str]:
+        """Stable order for API JSON: citizen then lawyer. Invalid CSV => both. `lawyer` token => list both."""
+        raw = str(self.client_modes_supported_csv or "").strip().lower()
+        parts = [p.strip() for p in raw.split(",") if p.strip()]
+        selected: set[str] = set()
+        for p in parts:
+            pl = p.strip().lower()
+            if pl in ("citizen", "lawyer"):
+                selected.add(pl)
+        if not selected:
+            return ["citizen", "lawyer"]
+        if "lawyer" in selected:
+            return ["citizen", "lawyer"]
+        return ["citizen"]
+
+    def pinecone_query_fetch_size(self, client_mode: str) -> int:
+        """P3-2: Pre–issue-filter Pinecone query size; lawyer can fetch more (cost cap 200)."""
+        base = max(8, min(200, int(self.pinecone_query_candidates or 48)))
+        if str(client_mode).lower() == "lawyer":
+            ovr = self.pinecone_query_candidates_lawyer
+            if ovr is not None:
+                return max(8, min(200, int(ovr)))
+            return min(200, max(8, base + 24))
+        return base
 
 
 settings = Settings()

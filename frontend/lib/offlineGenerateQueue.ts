@@ -38,6 +38,8 @@ function normalizePayload(p: Record<string, unknown>): GenerateRequestPayload | 
   const rl = p.response_language;
   const response_language =
     rl === "hi" || rl === "en" || rl === "hi_latn" ? rl : undefined;
+  const cm = p.client_mode;
+  const client_mode = cm === "lawyer" || cm === "citizen" ? cm : undefined;
   return {
     user_input: ui.trim(),
     userId: typeof p.userId === "string" ? p.userId : p.userId === null ? null : undefined,
@@ -48,6 +50,7 @@ function normalizePayload(p: Record<string, unknown>): GenerateRequestPayload | 
     email: typeof p.email === "string" ? p.email : undefined,
     skip_clarification: p.skip_clarification === true ? true : undefined,
     response_language,
+    client_mode,
   };
 }
 

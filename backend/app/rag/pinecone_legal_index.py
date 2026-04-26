@@ -7,6 +7,7 @@ Falls back to the JSON pipeline when not configured.
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any
 
 from pinecone import Pinecone
@@ -19,6 +20,44 @@ from app.services.legal_relevance_filter import filter_entries_by_issue_type
 logger = logging.getLogger(__name__)
 
 _index: Any = None
+
+
+def _extract_source_year(entry: dict[str, Any]) -> int | None:
+    """Best-effort year extraction for Pinecone metadata filtering (P5-1)."""
+    for key in ("source_year", "source_version", "act_id", "source_name", "section"):
+        raw = str(entry.get(key) or "")
+        m = re.search(r"\b(19|20)\d{2}\b", raw)
+        if not m:
+            continue
+        y = int(m.group(0))
+        if 1900 <= y <= 2100:
+            return y
+    return None
+
+
+def _build_pinecone_filter(metadata_hints: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not isinstance(metadata_hints, dict):
+        return None
+    act_id = str(metadata_hints.get("act_id") or "").strip().lower()
+    year_raw = metadata_hints.get("source_year")
+    source_year: int | None
+    if isinstance(year_raw, int):
+        source_year = year_raw if 1900 <= year_raw <= 2100 else None
+    elif isinstance(year_raw, str) and year_raw.strip().isdigit():
+        y = int(year_raw.strip())
+        source_year = y if 1900 <= y <= 2100 else None
+    else:
+        source_year = None
+    clauses: list[dict[str, Any]] = []
+    if act_id:
+        clauses.append({"act_id": {"$eq": act_id}})
+    if source_year is not None:
+        clauses.append({"source_year": {"$eq": source_year}})
+    if not clauses:
+        return None
+    if len(clauses) == 1:
+        return clauses[0]
+    return {"$and": clauses}
 
 
 def _get_index() -> Any:
@@ -47,7 +86,7 @@ def metadata_to_entry(metadata: dict[str, Any] | None, match_id: str) -> dict[st
     else:
         ts = str(metadata.get("tags_csv") or "")
         tags = [t.strip() for t in ts.split(",") if t.strip()]
-    return {
+    out: dict[str, Any] = {
         "id": str(metadata.get("entry_id") or match_id),
         "domain": str(metadata.get("domain") or "").strip().lower(),
         "content": str(metadata.get("content") or ""),
@@ -58,6 +97,15 @@ def metadata_to_entry(metadata: dict[str, Any] | None, match_id: str) -> dict[st
         "verified": bool(metadata.get("verified", True)),
         "tags": tags,
     }
+    for opt in ("act_id", "source_version", "ingested_at", "content_sha256"):
+        if metadata.get(opt) is not None and str(metadata.get(opt) or "").strip():
+            out[opt] = str(metadata[opt])[:2_000]
+    if metadata.get("source_year") is not None:
+        try:
+            out["source_year"] = int(metadata.get("source_year"))  # type: ignore[arg-type]
+        except Exception:
+            pass
+    return out
 
 
 def entry_to_metadata(entry: dict[str, Any], *, content_max: int = 32_000) -> dict[str, Any]:
@@ -79,6 +127,13 @@ def entry_to_metadata(entry: dict[str, Any], *, content_max: int = 32_000) -> di
         m["tags"] = tags
     if entry.get("law_type"):
         m["law_type"] = str(entry.get("law_type"))[:500]
+    for opt in ("act_id", "source_version", "ingested_at", "content_sha256"):
+        v = entry.get(opt)
+        if v is not None and str(v).strip():
+            m[opt] = str(v)[:2_000]
+    y = _extract_source_year(entry)
+    if y is not None:
+        m["source_year"] = int(y)
     return m
 
 
@@ -107,6 +162,7 @@ def pinecone_rag_scored(
     *,
     top_k: int,
     max_candidates: int,
+    metadata_hints: dict[str, Any] | None = None,
 ) -> tuple[list[tuple[float, dict[str, Any]]], int, bool, bool]:
     """
     If Pinecone is selected and configured, return ranked (score, entry) plus flags.
@@ -123,6 +179,7 @@ def pinecone_rag_scored(
 
     n_fetch = min(200, max(8, int(max_candidates)))
     ns = (settings.pinecone_namespace or "").strip()
+    pc_filter = _build_pinecone_filter(metadata_hints)
 
     try:
         index = _get_index()
@@ -136,6 +193,7 @@ def pinecone_rag_scored(
             top_k=n_fetch,
             include_metadata=True,
             namespace=ns,
+            **({"filter": pc_filter} if pc_filter else {}),
         )
     except Exception as e:
         logger.warning("rag_pinecone: query failed, falling back to local: %s", e)
@@ -180,6 +238,16 @@ def pinecone_rag_scored(
     pool_size = len(issue_filtered)
     out: list[tuple[float, dict[str, Any]]] = []
     for e in issue_filtered:
+        # Keep a defensive post-filter in case older rows missed `source_year`/`act_id` metadata.
+        if isinstance(metadata_hints, dict):
+            h_act = str(metadata_hints.get("act_id") or "").strip().lower()
+            if h_act and str(e.get("act_id") or "").strip().lower() != h_act:
+                continue
+            h_year = metadata_hints.get("source_year")
+            if isinstance(h_year, int):
+                ey = _extract_source_year(e)
+                if ey != h_year:
+                    continue
         s = by_key.get(_entry_key(e), (0.0, e))[0]
         out.append((float(s), e))
     out.sort(key=lambda t: -t[0])
@@ -188,14 +256,12 @@ def pinecone_rag_scored(
     return (out, pool_size, embedding_used, True)
 
 
-def upsert_curated_knowledge_from_file(batch_size: int = 20) -> int:
+def upsert_knowledge_entries(entries: list[dict[str, Any]], *, batch_size: int = 20) -> int:
     """
-    Embed `knowledge_seed` entries and upsert into the configured Pinecone index.
-    Re-run when content or the embedding model changes. Index must exist (dimension 1536, cosine, same model as queries).
+    Embed arbitrary knowledge-shaped dicts (knowledge_seed or P4 statute ingest) and upsert to Pinecone.
     """
     if not _is_pinecone_available():
         raise ValueError("Set pinecone_api_key and pinecone_index in environment / .env (see app.config).")
-    entries = load_knowledge_entries()
     if not entries:
         return 0
     index = _get_index()
@@ -209,7 +275,7 @@ def upsert_curated_knowledge_from_file(batch_size: int = 20) -> int:
             raise RuntimeError("OpenAI embed failed: got %d vectors for %d items" % (len(embs), len(batch)))
         to_upsert: list[dict[str, Any]] = []
         for e, vec in zip(batch, embs, strict=True):
-            pid = str(e.get("id") or "").strip() or f"e{hash((e.get('source_url'), e.get('content', '')[:200]))%10**10}"
+            pid = str(e.get("id") or "").strip() or f"e{abs(hash((e.get('source_url'), str(e.get('content', ''))[:200])))%10**10}"
             to_upsert.append(
                 {
                     "id": pid,
@@ -224,3 +290,11 @@ def upsert_curated_knowledge_from_file(batch_size: int = 20) -> int:
         total += len(to_upsert)
     logger.info("pinecone_upserted count=%d model=%s", total, EMBEDDING_MODEL)
     return total
+
+
+def upsert_curated_knowledge_from_file(batch_size: int = 20) -> int:
+    """
+    Embed `knowledge_seed` entries and upsert into the configured Pinecone index.
+    Re-run when content or the embedding model changes. Index must exist (dimension 1536, cosine, same model as queries).
+    """
+    return upsert_knowledge_entries(list(load_knowledge_entries()), batch_size=batch_size)

@@ -3,9 +3,9 @@ import type { MetadataRoute } from "next";
 /** P7-01: installable shell + `public/sw.js` (registered in prod from `ServiceWorkerRegister`). */
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "NyayaSetu — AI Legal Companion",
+    name: "NyayaSetu — Legal clarity for India",
     short_name: "NyayaSetu",
-    description: "Draft documents, understand your issue, and get practical next steps.",
+    description: "Legal clarity for India — structured guidance and drafting help. Educational, not a law firm.",
     start_url: "/",
     display: "standalone",
     background_color: "#fafaf9",
@@ -14,7 +14,7 @@ export default function manifest(): MetadataRoute.Manifest {
     categories: ["legal", "productivity", "utilities"],
     icons: [
       {
-        src: "/next.svg",
+        src: "/icon.svg",
         type: "image/svg+xml",
         sizes: "any",
         purpose: "any",

@@ -30,6 +30,15 @@ def test_parse_no_force_disables_hybrid_signal() -> None:
     assert sig.documents_yes is True
 
 
+def test_parse_no_force_from_singular_additional_detail_prompt_text() -> None:
+    text = (
+        "Issue\n\n"
+        "Additional detail: Was there any threat, violence, or force involved in this dispute?: No"
+    )
+    sig = parse_followup_signals(text)
+    assert sig.no_force_peaceful is True
+
+
 def test_inject_classification_hints_appends_tokens() -> None:
     t = "x\n\nAdditional details (structured):\nForce/threat: Yes"
     out = inject_classification_hints(t)

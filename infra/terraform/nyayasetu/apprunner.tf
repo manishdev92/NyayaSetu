@@ -34,16 +34,25 @@ resource "aws_apprunner_service" "api" {
 
       image_configuration {
         port = "8000"
-        runtime_environment_variables = {
-          CORS_ORIGINS               = local.api_cors_origins
-          CORS_ALLOW_APPRUNNER_REGEX = "true"
-          BILLING_MODE               = "none"
-          RAG_VECTOR_STORE           = "local"
-          EVALUATOR_DUAL_DRAFT       = "false"
-          OPENAI_MODEL               = "gpt-4o-mini"
-          OPENAI_API_KEY             = var.openai_api_key
-          INGEST_OCR_PROVIDER        = "none"
-        }
+        runtime_environment_variables = merge(
+          {
+            CORS_ORIGINS               = local.api_cors_origins
+            CORS_ALLOW_APPRUNNER_REGEX = "true"
+            BILLING_MODE               = "none"
+            RAG_VECTOR_STORE           = lower(trimspace(var.rag_vector_store))
+            EVALUATOR_DUAL_DRAFT       = "false"
+            OPENAI_MODEL               = "gpt-4o-mini"
+            OPENAI_API_KEY             = var.openai_api_key
+            INGEST_OCR_PROVIDER        = "none"
+          },
+          lower(trimspace(var.rag_vector_store)) == "pinecone"
+          ? {
+            PINECONE_API_KEY   = var.pinecone_api_key
+            PINECONE_INDEX     = var.pinecone_index
+            PINECONE_NAMESPACE = var.pinecone_namespace
+          }
+          : {}
+        )
       }
     }
   }
@@ -60,6 +69,15 @@ resource "aws_apprunner_service" "api" {
     timeout             = 5
     healthy_threshold   = 1
     unhealthy_threshold = 5
+  }
+
+  lifecycle {
+    precondition {
+      condition = lower(trimspace(var.rag_vector_store)) != "pinecone" || (
+        length(trimspace(var.pinecone_api_key)) > 0 && length(trimspace(var.pinecone_index)) > 0
+      )
+      error_message = "When rag_vector_store=pinecone, set TF_VAR_pinecone_api_key and a non-empty TF_VAR_pinecone_index (see backend/docs/RAG_PINECONE_RUNBOOK.md)."
+    }
   }
 }
 

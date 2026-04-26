@@ -1,0 +1,71 @@
+# Primary way to ingest statute `*.md` from S3 into Pinecone (manual `workflow_dispatch` only).
+# For curated JSON only, use `pinecone-kb-ingest.yml` instead.
+#
+# Set repository **Secrets**:
+#   OPENAI_API_KEY, PINECONE_API_KEY, PINECONE_INDEX
+#   AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY  (IAM user/role with s3:ListBucket + s3:GetObject on the prefix)
+# Optional: PINECONE_NAMESPACE, S3_STATUTES_URI (default s3 location if you do not type the input)
+# Region: set repository **Variable** `AWS_DEFAULT_REGION` (e.g. ap-south-1), or the workflow falls back to ap-south-1 in the configure step.
+#
+# Dry-run defaults to true — run again with dry_run false after reviewing JSON.
+name: Pinecone statute ingest (S3)
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Dry-run (summary only, no Pinecone upsert)"
+        type: boolean
+        default: true
+      s3_uri:
+        description: "s3://bucket/prefix/  (overrides S3_STATUTES_URI secret if non-empty)"
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install
+        run: pip install -r requirements.txt
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ vars.AWS_DEFAULT_REGION || 'ap-south-1' }}
+      - name: Ingest from S3
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          PINECONE_API_KEY: ${{ secrets.PINECONE_API_KEY }}
+          PINECONE_INDEX: ${{ secrets.PINECONE_INDEX }}
+          PINECONE_NAMESPACE: ${{ secrets.PINECONE_NAMESPACE }}
+          S3_DEFAULT: ${{ secrets.S3_STATUTES_URI }}
+        run: |
+          set -e
+          S3U="${{ inputs.s3_uri }}"
+          if [ -z "$S3U" ]; then S3U="${S3_DEFAULT}"; fi
+          if [ -z "$S3U" ]; then
+            echo "Set workflow input s3_uri or repository secret S3_STATUTES_URI"
+            exit 1
+          fi
+          if [ -z "$OPENAI_API_KEY" ] || [ -z "$PINECONE_API_KEY" ] || [ -z "$PINECONE_INDEX" ]; then
+            echo "Missing OPENAI / PINECONE secrets (include PINECONE_INDEX)"
+            exit 1
+          fi
+          export PINECONE_NAMESPACE="${PINECONE_NAMESPACE:-}"
+          DRY="${{ inputs.dry_run }}"
+          if [ "$DRY" = "true" ]; then
+            python -m app.rag.jobs.ingest_statutes --s3-uri "$S3U" --dry-run
+          else
+            python -m app.rag.jobs.ingest_statutes --s3-uri "$S3U"
+          fi

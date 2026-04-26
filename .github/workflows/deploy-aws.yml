@@ -31,8 +31,6 @@ permissions:
   contents: read
 
 env:
-  # dispatch: workflow input. push: repository variable or default (short-circuit avoids reading inputs on push).
-  AWS_REGION: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.aws_region || vars.AWS_REGION || 'ap-south-1' }}
   ECR_API_REPOSITORY: nyayasetu-api
   ECR_WEB_REPOSITORY: nyayasetu-web
 
@@ -42,18 +40,47 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # stack region: workflow_dispatch input > repo variable > ap-south-1 (GHA default env GITHUB_EVENT_NAME, not GHA in bash conditions)
+      - name: Resolve AWS region
+        id: ar
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            R="${{ github.event.inputs.aws_region }}"
+          else
+            R='${{ vars.AWS_REGION || '' }}'
+            if [ -z "$R" ] || [ "$R" = "null" ]; then R=ap-south-1; fi
+          fi
+          echo "region=$R" >> "$GITHUB_OUTPUT"
+          echo "AWS region: $R"
+
+      - name: Require repository secrets
+        run: |
+          if [ -z "$DEPLOY_ROLE" ] || [ "$DEPLOY_ROLE" = "" ]; then
+            echo '::error::Set Actions secret AWS_ROLE_TO_ASSUME (from terraform output github_deploy_role_arn).'
+            exit 1
+          fi
+          if [ -z "$NEXT_PUBLIC_API" ] || [ "$NEXT_PUBLIC_API" = "" ]; then
+            echo '::error::Set Actions secret NEXT_PUBLIC_API_URL (public HTTPS API URL, no trailing slash).'
+            exit 1
+          fi
+        env:
+          DEPLOY_ROLE: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          NEXT_PUBLIC_API: ${{ secrets.NEXT_PUBLIC_API_URL }}
+
       - name: Configure AWS (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
           role-session-name: nyayasetu-github-actions
           audience: sts.amazonaws.com
-          aws-region: ${{ env.AWS_REGION }}
+          aws-region: ${{ steps.ar.outputs.region }}
 
       - uses: aws-actions/amazon-ecr-login@v2
 
       - name: Set registry URL
         id: ecr
+        env:
+          AWS_REGION: ${{ steps.ar.outputs.region }}
         run: |
           ACCOUNT=$(aws sts get-caller-identity --query Account --output text)
           echo "registry=${ACCOUNT}.dkr.ecr.${AWS_REGION}.amazonaws.com" >> "$GITHUB_OUTPUT"
@@ -62,6 +89,7 @@ jobs:
         env:
           REGISTRY: ${{ steps.ecr.outputs.registry }}
           IMAGE_TAG: ${{ github.sha }}
+          AWS_REGION: ${{ steps.ar.outputs.region }}
         run: |
           docker build --platform linux/amd64 -t "${REGISTRY}/${ECR_API_REPOSITORY}:${IMAGE_TAG}" -t "${REGISTRY}/${ECR_API_REPOSITORY}:latest" backend
           docker push "${REGISTRY}/${ECR_API_REPOSITORY}:${IMAGE_TAG}"
@@ -73,6 +101,7 @@ jobs:
         env:
           REGISTRY: ${{ steps.ecr.outputs.registry }}
           IMAGE_TAG: ${{ github.sha }}
+          AWS_REGION: ${{ steps.ar.outputs.region }}
           NEXT_PUBLIC_API_URL: ${{ secrets.NEXT_PUBLIC_API_URL }}
           # Same value as web_app_public_url / terraform output web_cloudfront_url (CloudFront, not App Runner) so the UI does not resolve to the *.awsapprunner.com hostname
           WEB_APP_PUBLIC_URL: ${{ vars.WEB_APP_PUBLIC_URL }}

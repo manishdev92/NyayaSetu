@@ -21,13 +21,25 @@
 | Hybrid routing | `test_hybrid_routing.py` |
 | Land / strict guard | `test_strict_land_guard.py` |
 
-## Clarification & RAG (observability, not “golden answers”)
+## Pytest: `@pytest.mark.rag` (P7-1)
+
+RAG, Pinecone, tier/hints, statute ingest, and the optional live smoke test are tagged **`rag`**. The default `pytest` run still **includes** them (CI stays strict).
+
+- **Faster local pass** (skip RAG / vector slice):
+  ```bash
+  cd backend && python -m pytest tests/ -q -m "not rag"
+  ```
+- **RAG only** (including mocks + ingest unit tests; live smoke is skipped unless `RUN_PINECONE_SMOKE=1`):
+  ```bash
+  cd backend && python -m pytest tests/ -q -m "rag"
+  ```
 
 | Area | File |
 |------|------|
 | RAG PII-safe logging, grounding | `test_rag_pipeline_observability.py` |
-| Pinecone adapter (when enabled) | `test_pinecone_rag.py` |
-| LLM clarifier (when not mocked) | `test_llm_clarification_agent.py` |
+| Pinecone adapter (mocks) | `test_pinecone_rag.py` |
+| Optional live `describe_index_stats` (secrets + `RUN_PINECONE_SMOKE=1`) | `test_pinecone_smoke.py` (manual / `.github/workflows/pinecone-smoke.yml`) |
+| LLM clarifier (when not mocked) | `test_llm_clarification_agent.py` (not in `rag` set) |
 
 ## How to run fast routing/safety slice
 

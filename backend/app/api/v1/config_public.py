@@ -26,7 +26,7 @@ def _ingest_ocr_ready() -> bool:
 
 
 @router.get("/config")
-def public_config() -> dict[str, str | bool | int]:
+def public_config() -> dict[str, str | bool | int | list[str]]:
     """
     Billing / product flags. Set `BILLING_MODE=none|stub|stripe` in the API env.
     - none: no paywall copy in the app (default).
@@ -41,6 +41,9 @@ def public_config() -> dict[str, str | bool | int]:
     portal = stripe_portal_ready()
     ent_be = "postgres" if (getattr(settings, "entitlements_database_url", None) or "").strip() else "sqlite"
     rl_be = "redis" if (getattr(settings, "redis_url", None) or "").strip() else "memory"
+    clm = str(getattr(settings, "case_law_mode", "off") or "off").strip().lower()
+    if clm not in ("off", "noop", "tavily_preview"):
+        clm = "off"
     return {
         "evaluator_dual_draft_enabled": bool(getattr(settings, "evaluator_dual_draft_enabled", False)),
         "billing_mode": mode,
@@ -56,4 +59,9 @@ def public_config() -> dict[str, str | bool | int]:
         "daily_limit_pro": int(settings.daily_limit_pro),
         "ingest_ocr_provider": str(settings.ingest_ocr_provider).strip().lower(),
         "ingest_ocr_ready": _ingest_ocr_ready(),
+        "client_modes_supported": settings.get_client_modes_supported(),
+        "case_law_research_mode": clm,
+        "lawyer_mode_requires_sign_in": bool(getattr(settings, "lawyer_client_mode_requires_user_id", False)),
+        "lawyer_mode_requires_pro": bool(getattr(settings, "lawyer_client_mode_requires_pro", False)),
+        "lawyer_pro_gate_active": bool(settings.lawyer_pro_gate_active()),
     }

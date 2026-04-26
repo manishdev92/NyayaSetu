@@ -213,7 +213,7 @@ export default function LawyerDashboardPage() {
         </section>
 
         <Link
-          href="/"
+          href="/chat"
           className="inline-block text-sm font-medium text-amber-900 underline decoration-amber-800/40 underline-offset-2 hover:text-amber-950"
         >
           {t(locale, "dashboardBackHome")}

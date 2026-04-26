@@ -39,6 +39,36 @@ variable "openai_api_key" {
   sensitive   = true
 }
 
+variable "rag_vector_store" {
+  type        = string
+  description = "RAG backend: local (knowledge JSON in container) or pinecone (set PINECONE_* and run ingest). Env: RAG_VECTOR_STORE"
+  default     = "local"
+
+  validation {
+    condition     = contains(["local", "pinecone"], lower(trimspace(var.rag_vector_store)))
+    error_message = "rag_vector_store must be 'local' or 'pinecone'"
+  }
+}
+
+variable "pinecone_api_key" {
+  type        = string
+  description = "Pinecone API key when RAG_VECTOR_STORE=pinecone (sensitive; prefer TF_VAR_pinecone_api_key)."
+  default     = ""
+  sensitive   = true
+}
+
+variable "pinecone_index" {
+  type        = string
+  description = "Pinecone index name (1536-dim, cosine) — see backend/docs/RAG_PINECONE_RUNBOOK.md. Env: PINECONE_INDEX"
+  default     = "nyaya-legal-kb"
+}
+
+variable "pinecone_namespace" {
+  type        = string
+  description = "Optional Pinecone namespace; empty string uses the index default. Env: PINECONE_NAMESPACE"
+  default     = ""
+}
+
 variable "clerk_publishable_key" {
   type        = string
   description = "Clerk publishable key for the web container (NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY)."
@@ -68,5 +98,11 @@ variable "create_cloudfront_web" {
 variable "web_app_public_url" {
   type        = string
   description = "Public site URL (https://) — use CloudFront URL so Next.js metadata/redirects match the browser. Baked in Docker as NEXT_PUBLIC_APP_URL; set to terraform output web_cloudfront_url after the first apply."
+  default     = ""
+}
+
+variable "ingest_corpus_bucket_name" {
+  type        = string
+  description = "If non-empty, create a private S3 bucket for statute Markdown drops (ingest). Name must be globally unique. IAM for CI: grant s3:ListBucket (prefix) + s3:GetObject on that prefix to the key used in GitHub Actions."
   default     = ""
 }

@@ -1,0 +1,38 @@
+# Primary way to refresh Pinecone from repo: upsert `knowledge_seed.json` (curated KB).
+# Manual `workflow_dispatch` only (not on every push). Same commit you merge is what gets ingested.
+#
+# Secrets: OPENAI_API_KEY, PINECONE_API_KEY, PINECONE_INDEX · optional PINECONE_NAMESPACE
+# Optional: add `environment: pinecone-prod` to the `ingest` job + Environment with required reviewers.
+name: Pinecone KB ingest (curated)
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install
+        run: pip install -r requirements.txt
+      - name: Upsert curated knowledge to Pinecone
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          PINECONE_API_KEY: ${{ secrets.PINECONE_API_KEY }}
+          PINECONE_INDEX: ${{ secrets.PINECONE_INDEX }}
+          PINECONE_NAMESPACE: ${{ secrets.PINECONE_NAMESPACE }}
+        run: |
+          if [ -z "$OPENAI_API_KEY" ] || [ -z "$PINECONE_API_KEY" ] || [ -z "$PINECONE_INDEX" ]; then
+            echo "Set secrets: OPENAI_API_KEY, PINECONE_API_KEY, PINECONE_INDEX"
+            exit 1
+          fi
+          export PINECONE_NAMESPACE="${PINECONE_NAMESPACE:-}"
+          python -m app.rag.pinecone_ingest

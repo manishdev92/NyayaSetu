@@ -1,6 +1,6 @@
 import asyncio
 import json
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Header, HTTPException, Request, Response
 from fastapi.responses import StreamingResponse
@@ -18,6 +18,7 @@ from app.api.v1.generate_mappers import (
     to_authority_compact,
     to_authority_hierarchy,
     to_authority_summary,
+    to_case_law_references,
     to_clarification_agent_questions,
     to_clarification_points,
     to_emergency_contacts,
@@ -34,11 +35,13 @@ from app.api.v1.generate_mappers import (
     to_verifier,
 )
 from app.api.v1.generate_schemas import GenerateRequest, GenerateResponse, UsageInfoOut
+from app.config import settings
 from app.services.ai_service import (
     generate_legal_response,
     maybe_clarification_only_response,
     prefetch_intent,
 )
+from app.services.pro_entitlements_store import clerk_has_pro_entitlement
 from app.services.usage_limit import UsageSnapshot, consume_request, http_rate_limit_headers
 
 router = APIRouter()
@@ -63,6 +66,68 @@ def _coalesce_response_language(
         if part.startswith("hi"):
             return "hi"
     return "en"
+
+
+def _resolve_client_mode(
+    body_mode: Literal["citizen", "lawyer"] | None,
+    header_value: str | None,
+) -> Literal["citizen", "lawyer"]:
+    """Body wins; then X-Client-Mode; default citizen. See docs/CLIENT_MODE_DESIGN.md."""
+    if body_mode in ("citizen", "lawyer"):
+        return body_mode
+    if isinstance(header_value, str) and header_value.strip():
+        h = header_value.strip().lower()
+        if h in ("lawyer", "legal_professional", "pro"):
+            return "lawyer"
+        if h in ("citizen", "public", "general"):
+            return "citizen"
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "message": "Invalid X-Client-Mode; use citizen, lawyer, or omit.",
+                "error_code": "invalid_client_mode",
+            },
+        )
+    return "citizen"
+
+
+def _ensure_lawyer_mode_allowed(client_mode: str, uid: str | None) -> None:
+    """P1-1: optional gate — lawyer tier requires signed-in user id when configured."""
+    if client_mode != "lawyer":
+        return
+    if not settings.lawyer_client_mode_requires_user_id:
+        return
+    if uid and str(uid).strip():
+        return
+    raise HTTPException(
+        status_code=403,
+        detail={
+            "message": "Lawyer mode requires a signed-in user. Sign in and retry, or use general user mode.",
+            "error_code": "lawyer_mode_requires_sign_in",
+        },
+    )
+
+
+def _ensure_lawyer_pro_if_required(client_mode: str, uid: str | None) -> None:
+    """P1-1: optional gate — Pro subscription (Stripe entitlements) for lawyer mode."""
+    if client_mode != "lawyer" or not settings.lawyer_pro_gate_active():
+        return
+    if not uid or not str(uid).strip():
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "message": "Lawyer mode in this deployment requires a signed-in account and NyayaSetu Pro.",
+                "error_code": "lawyer_mode_requires_sign_in",
+            },
+        )
+    if not clerk_has_pro_entitlement(str(uid).strip()):
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "message": "Lawyer mode requires an active NyayaSetu Pro subscription. Use general user mode, or upgrade in billing.",
+                "error_code": "lawyer_mode_requires_pro",
+            },
+        )
 
 
 def _usage_model(snap: UsageSnapshot) -> UsageInfoOut:
@@ -90,6 +155,7 @@ def generate(
     payload: GenerateRequest,
     x_user_id: str | None = Header(default=None, alias="X-User-Id"),
     accept_language: str | None = Header(default=None, alias="Accept-Language"),
+    x_client_mode: str | None = Header(default=None, alias="X-Client-Mode"),
 ) -> GenerateResponse:
     client_ip = request.client.host if request.client else None
     uid = x_user_id.strip() if isinstance(x_user_id, str) and x_user_id.strip() else None
@@ -106,6 +172,10 @@ def generate(
     for hk, hv in http_rate_limit_headers(usage_snap).items():
         response.headers[hk] = hv
 
+    client_mode = _resolve_client_mode(payload.client_mode, x_client_mode)
+    _ensure_lawyer_mode_allowed(client_mode, uid)
+    _ensure_lawyer_pro_if_required(client_mode, uid)
+
     try:
         details = {
             "full_name": payload.full_name,
@@ -120,6 +190,8 @@ def generate(
             user_details=details,
             skip_clarification=payload.skip_clarification,
             response_language=rl,
+            client_mode=client_mode,
+            task_type=payload.task_type,
         )
         disclaimer = str(result.get("authority_disclaimer") or "").strip()
         if not disclaimer:
@@ -130,7 +202,15 @@ def generate(
         draft = result.get("draft")
         if not isinstance(draft, str) or not draft.strip():
             draft = str(result.get("document") or "")
+        _tt = result.get("task_type", payload.task_type)
+        task_type_out = (
+            _tt
+            if _tt in ("draft_letter", "qa_only", "draft_with_qa", "consumer_complaint_filing")
+            else payload.task_type
+        )
         return GenerateResponse(
+            client_mode=client_mode,
+            task_type=task_type_out,
             document=result["document"],
             draft=draft,
             explanation=result["explanation"],
@@ -199,6 +279,12 @@ def generate(
             emergency_registry_disclaimer=str(result.get("emergency_registry_disclaimer") or ""),
             crisis_triage_mode=bool(result.get("crisis_triage_mode")),
             usage=_usage_model(usage_snap),
+            case_law_references=to_case_law_references(result.get("case_law_references")),
+            forum_caption=result.get("forum_caption")
+            if isinstance(result.get("forum_caption"), str)
+            else None,
+            prayer_items=list(pi) if isinstance((pi := result.get("prayer_items")), list) else [],
+            annexure_checklist=list(ac) if isinstance((ac := result.get("annexure_checklist")), list) else [],
             document_evaluator=result.get("document_evaluator")
             if isinstance(result.get("document_evaluator"), dict)
             else None,
@@ -225,10 +311,9 @@ async def generate_stream(
     payload: GenerateRequest,
     x_user_id: str | None = Header(default=None, alias="X-User-Id"),
     accept_language: str | None = Header(default=None, alias="Accept-Language"),
+    x_client_mode: str | None = Header(default=None, alias="X-Client-Mode"),
 ) -> StreamingResponse:
     """SSE stream: phase updates, optional clarification, then full JSON result (or clarification-only payload)."""
-    from app.config import settings
-
     client_ip = request.client.host if request.client else None
     uid = x_user_id.strip() if isinstance(x_user_id, str) and x_user_id.strip() else None
     stream_ok, usage_snap = consume_request(user_id=uid, client_ip=client_ip)
@@ -242,6 +327,10 @@ async def generate_stream(
             headers=http_rate_limit_headers(usage_snap),
         )
     udict = _usage_payload(usage_snap)
+
+    client_mode = _resolve_client_mode(payload.client_mode, x_client_mode)
+    _ensure_lawyer_mode_allowed(client_mode, uid)
+    _ensure_lawyer_pro_if_required(client_mode, uid)
 
     user_trim = payload.user_input.strip()
     stream_rl = _coalesce_response_language(payload.response_language, accept_language)
@@ -327,6 +416,7 @@ async def generate_stream(
                     )
                     early_out = dict(early) if isinstance(early, dict) else {}
                     early_out["usage"] = udict
+                    early_out["client_mode"] = client_mode
                     yield _sse_line({"type": "result", "payload": early_out})
                     yield _sse_line({"type": "done"})
                     return
@@ -339,9 +429,11 @@ async def generate_stream(
                 _intent_prefetch=prefetch,
                 skip_clarification=True,
                 response_language=stream_rl,
+                client_mode=client_mode,
+                task_type=payload.task_type,
             )
             assert isinstance(result, dict)
-            result = {**result, "usage": udict}
+            result = {**result, "usage": udict, "client_mode": client_mode}
             yield _sse_line({"type": "result", "payload": result})
             yield _sse_line({"type": "done"})
         except ValueError as e:

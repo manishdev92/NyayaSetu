@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -148,6 +148,14 @@ class GenerateRequest(BaseModel):
         default=None,
         description="Output language: 'en', 'hi' (Devanagari), or 'hi_latn' (Hindi in Roman/Latin script). Omit to infer from Accept-Language.",
     )
+    client_mode: Literal["citizen", "lawyer"] | None = Field(
+        default=None,
+        description="Caller tier: citizen (default) or lawyer. Body wins over X-Client-Mode header; both omitted => citizen. Not authentication.",
+    )
+    task_type: Literal["draft_letter", "qa_only", "draft_with_qa", "consumer_complaint_filing"] = Field(
+        default="draft_letter",
+        description="draft_letter = full formal letter; qa_only = answer-first, short annex; draft_with_qa = short direct answer then full letter; consumer_complaint_filing = DCDRC-style filing template.",
+    )
 
     @field_validator("response_language", mode="before")
     @classmethod
@@ -268,6 +276,19 @@ class UsageInfoOut(BaseModel):
     reset_at_utc: str
 
 
+class CaseLawReferenceOut(BaseModel):
+    """Sprint 6: optional licensed case-law snippets (not statute RAG)."""
+
+    model_config = ConfigDict(extra="ignore")
+    title: str = ""
+    citation: str = ""
+    court: str = ""
+    year: int | None = None
+    source: str = ""
+    url: str = ""
+    snippet: str = ""
+
+
 class GenerateResponse(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
@@ -324,6 +345,21 @@ class GenerateResponse(BaseModel):
     emergency_registry_disclaimer: str = ""
     crisis_triage_mode: bool = False
     usage: UsageInfoOut | None = None
+    client_mode: Literal["citizen", "lawyer"] = Field(
+        default="citizen",
+        description="Effective tier applied for this response (echo of body/header resolution).",
+    )
+    task_type: Literal["draft_letter", "qa_only", "draft_with_qa", "consumer_complaint_filing"] = Field(
+        default="draft_letter",
+        description="Effective task type applied for this response (echo of request body).",
+    )
+    forum_caption: str | None = None
+    prayer_items: list[str] = Field(default_factory=list)
+    annexure_checklist: list[str] = Field(default_factory=list)
+    case_law_references: list[CaseLawReferenceOut] = Field(
+        default_factory=list,
+        description="Sprint 6: optional case-law research rows (lawyer tier; empty when off or not configured).",
+    )
     # Optional second pass: LLM evaluator + refiner (when `EVALUATOR_DUAL_DRAFT` is enabled on API).
     document_evaluator: dict[str, Any] | None = None
     document_revised: str = ""

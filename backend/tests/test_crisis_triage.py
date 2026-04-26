@@ -24,3 +24,20 @@ def test_crisis_lock_fired_up_thana_by_text() -> None:
         )
         is True
     )
+
+
+def test_crisis_lock_no_force_followup_prevents_false_police_triage() -> None:
+    meta = {
+        "is_emergency": False,
+        "fine_intent": "land_dispute",
+        "sub_type": "ownership_dispute",
+        "domain": "civil",
+        "phase6_priority": "law_and_order",
+        "is_hybrid": True,
+    }
+    taxonomy = {"issue_type": "land", "severity": "high"}
+    text = (
+        "Land mutation dispute in Varanasi.\n"
+        "Additional detail: Was there any threat, violence, or force involved in this dispute?: No"
+    )
+    assert crisis_triage_lock(meta, taxonomy, user_input=text) is False

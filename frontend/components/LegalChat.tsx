@@ -11,6 +11,7 @@ import {
   type ClarificationPoint,
   type GenerateRequestPayload,
   type GenerateResponse,
+  type GenerateTaskType,
   type StreamEvent,
 } from "@/services/api";
 import {
@@ -54,6 +55,9 @@ function uid(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 }
 
+const CLIENT_MODE_STORAGE_KEY = "nyaya-client-mode";
+const TASK_TYPE_STORAGE_KEY = "nyaya-task-type";
+
 function formatMaxUploadMbLabel(bytes: number): string {
   const m = bytes / 1_000_000;
   if (!Number.isFinite(m) || m <= 0) return "0";
@@ -83,6 +87,11 @@ export function LegalChat({
   responseLanguage,
   maxUploadBytes,
   ingestOcrReady = false,
+  lawyerModeAvailable = false,
+  lawyerModeRequiresSignIn = false,
+  lawyerProGateActive = false,
+  proEntitled = false,
+  responseTaskUiEnabled = false,
 }: {
   userId: string | null;
   profile: UserProfileFields;
@@ -94,6 +103,16 @@ export function LegalChat({
   maxUploadBytes?: number | null;
   /** From `GET /config` — show short OCR hint when the API advertises OCR as ready. */
   ingestOcrReady?: boolean;
+  /** P1-4: `NEXT_PUBLIC_LAWYER_MODE_UI` + API lists `lawyer` in `client_modes_supported`. */
+  lawyerModeAvailable?: boolean;
+  /** P1-1: from `GET /config` (`lawyer_mode_requires_sign_in`) — lawyer segment needs Clerk user id. */
+  lawyerModeRequiresSignIn?: boolean;
+  /** P1-1: from `GET /config` — lawyer requires active Pro (Stripe) when true. */
+  lawyerProGateActive?: boolean;
+  /** From `GET /billing/entitlements` when `billing_mode` is stripe — Pro subscription active. */
+  proEntitled?: boolean;
+  /** P2-4: `NEXT_PUBLIC_RESPONSE_TASK_UI` at build time — `task_type` on generate body. */
+  responseTaskUiEnabled?: boolean;
 }) {
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [input, setInput] = useState("");
@@ -117,7 +136,76 @@ export function LegalChat({
   const [ingestNote, setIngestNote] = useState<string | null>(null);
   const [pendingQueueCount, setPendingQueueCount] = useState(0);
   const [onlineHint, setOnlineHint] = useState(false);
+  const [clientMode, setClientMode] = useState<"citizen" | "lawyer">("citizen");
+  const [taskType, setTaskType] = useState<GenerateTaskType>("draft_letter");
   const loadingRef = useRef(false);
+  const canSelectLawyer =
+    (!lawyerModeRequiresSignIn || Boolean(userId?.trim())) &&
+    (!lawyerProGateActive || proEntitled);
+  const needLawyerProHint = Boolean(lawyerProGateActive && !proEntitled);
+  const needLawyerSignInHint = Boolean(lawyerModeRequiresSignIn && !userId?.trim());
+
+  useEffect(() => {
+    if (!responseTaskUiEnabled || typeof window === "undefined") return;
+    const raw = window.localStorage.getItem(TASK_TYPE_STORAGE_KEY);
+    if (
+      raw === "qa_only" ||
+      raw === "draft_with_qa" ||
+      raw === "draft_letter" ||
+      raw === "consumer_complaint_filing"
+    ) {
+      setTaskType(raw);
+    }
+  }, [responseTaskUiEnabled]);
+
+  useEffect(() => {
+    if (!responseTaskUiEnabled) {
+      setTaskType("draft_letter");
+    }
+  }, [responseTaskUiEnabled]);
+
+  const persistTaskType = useCallback(
+    (t: GenerateTaskType) => {
+      setTaskType(t);
+      if (typeof window !== "undefined" && responseTaskUiEnabled) {
+        window.localStorage.setItem(TASK_TYPE_STORAGE_KEY, t);
+      }
+    },
+    [responseTaskUiEnabled],
+  );
+
+  useEffect(() => {
+    if (!lawyerModeAvailable || typeof window === "undefined") return;
+    const raw = window.localStorage.getItem(CLIENT_MODE_STORAGE_KEY);
+    if (raw === "lawyer" || raw === "citizen") {
+      setClientMode(raw);
+    }
+  }, [lawyerModeAvailable]);
+
+  useEffect(() => {
+    if (!lawyerModeAvailable) {
+      setClientMode("citizen");
+    }
+  }, [lawyerModeAvailable]);
+
+  useEffect(() => {
+    if (!lawyerModeAvailable || canSelectLawyer) return;
+    if (clientMode !== "lawyer") return;
+    setClientMode("citizen");
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(CLIENT_MODE_STORAGE_KEY, "citizen");
+    }
+  }, [lawyerModeAvailable, canSelectLawyer, clientMode]);
+
+  const persistClientMode = useCallback(
+    (mode: "citizen" | "lawyer") => {
+      setClientMode(mode);
+      if (typeof window !== "undefined" && lawyerModeAvailable) {
+        window.localStorage.setItem(CLIENT_MODE_STORAGE_KEY, mode);
+      }
+    },
+    [lawyerModeAvailable],
+  );
   loadingRef.current = loading;
 
   useEffect(() => {
@@ -272,6 +360,16 @@ export function LegalChat({
             skip_clarification: streamOpts?.skipClarification === true,
             response_language: responseLanguage,
           };
+      if (lawyerModeAvailable) {
+        payload.client_mode = clientMode;
+      }
+      if (!fromQueueItem) {
+        if (responseTaskUiEnabled) {
+          payload.task_type = taskType;
+        } else {
+          delete (payload as { task_type?: GenerateTaskType }).task_type;
+        }
+      }
       if (!payload.user_input.trim()) {
         setLoading(false);
         return;
@@ -413,7 +511,19 @@ export function LegalChat({
         }
       }
     },
-    [appendAssistantChunk, onComplete, onError, profile, userId, locale, responseLanguage],
+    [
+      appendAssistantChunk,
+      onComplete,
+      onError,
+      profile,
+      userId,
+      locale,
+      responseLanguage,
+      lawyerModeAvailable,
+      clientMode,
+      responseTaskUiEnabled,
+      taskType,
+    ],
   );
 
   useEffect(() => {
@@ -723,6 +833,115 @@ export function LegalChat({
       </div>
 
       <form onSubmit={handleSend} className="mt-4 flex flex-col gap-2">
+        {lawyerModeAvailable ? (
+          <fieldset className="rounded-xl border border-indigo-200/80 bg-indigo-50/40 px-3 py-3 sm:px-4">
+            <legend className="px-1 text-sm font-semibold text-indigo-950">{t(locale, "clientModeLabel")}</legend>
+            <p className="mt-1 text-xs leading-relaxed text-indigo-950/80">{t(locale, "clientModeHint")}</p>
+            {needLawyerSignInHint ? (
+              <p className="mt-1 text-xs font-medium text-indigo-950/90">{t(locale, "clientModeLawyerNeedsSignIn")}</p>
+            ) : needLawyerProHint ? (
+              <p className="mt-1 text-xs font-medium text-indigo-950/90">{t(locale, "clientModeLawyerNeedsPro")}</p>
+            ) : null}
+            <div className="mt-2 flex flex-wrap gap-2" role="group" aria-label={String(t(locale, "clientModeLabel"))}>
+              <button
+                type="button"
+                aria-pressed={clientMode === "citizen"}
+                disabled={loading || ingesting || voiceTranscribing}
+                onClick={() => persistClientMode("citizen")}
+                className={`rounded-lg border px-3 py-2 text-sm font-medium transition disabled:opacity-50 ${
+                  clientMode === "citizen"
+                    ? "border-indigo-800 bg-indigo-800 text-white shadow-sm"
+                    : "border-indigo-800/35 bg-white text-indigo-950 hover:bg-indigo-100/80"
+                }`}
+              >
+                {t(locale, "clientModeCitizen")}
+              </button>
+              <button
+                type="button"
+                aria-pressed={clientMode === "lawyer"}
+                disabled={loading || ingesting || voiceTranscribing || !canSelectLawyer}
+                title={
+                  !canSelectLawyer
+                    ? String(
+                        t(
+                          locale,
+                          needLawyerSignInHint ? "clientModeLawyerNeedsSignIn" : "clientModeLawyerNeedsPro",
+                        ),
+                      )
+                    : undefined
+                }
+                onClick={() => persistClientMode("lawyer")}
+                className={`rounded-lg border px-3 py-2 text-sm font-medium transition disabled:opacity-50 ${
+                  clientMode === "lawyer"
+                    ? "border-indigo-800 bg-indigo-800 text-white shadow-sm"
+                    : "border-indigo-800/35 bg-white text-indigo-950 hover:bg-indigo-100/80"
+                }`}
+              >
+                {t(locale, "clientModeLawyer")}
+              </button>
+            </div>
+          </fieldset>
+        ) : null}
+        {responseTaskUiEnabled ? (
+          <fieldset className="rounded-xl border border-emerald-200/80 bg-emerald-50/40 px-3 py-3 sm:px-4">
+            <legend className="px-1 text-sm font-semibold text-emerald-950">{t(locale, "taskTypeLabel")}</legend>
+            <p className="mt-1 text-xs leading-relaxed text-emerald-950/80">{t(locale, "taskTypeHint")}</p>
+            <div className="mt-2 flex flex-wrap gap-2" role="group" aria-label={String(t(locale, "taskTypeLabel"))}>
+              <button
+                type="button"
+                aria-pressed={taskType === "draft_letter"}
+                disabled={loading || ingesting || voiceTranscribing}
+                onClick={() => persistTaskType("draft_letter")}
+                className={`rounded-lg border px-3 py-2 text-sm font-medium transition disabled:opacity-50 ${
+                  taskType === "draft_letter"
+                    ? "border-emerald-800 bg-emerald-800 text-white shadow-sm"
+                    : "border-emerald-800/35 bg-white text-emerald-950 hover:bg-emerald-100/80"
+                }`}
+              >
+                {t(locale, "taskTypeLetter")}
+              </button>
+              <button
+                type="button"
+                aria-pressed={taskType === "qa_only"}
+                disabled={loading || ingesting || voiceTranscribing}
+                onClick={() => persistTaskType("qa_only")}
+                className={`rounded-lg border px-3 py-2 text-sm font-medium transition disabled:opacity-50 ${
+                  taskType === "qa_only"
+                    ? "border-emerald-800 bg-emerald-800 text-white shadow-sm"
+                    : "border-emerald-800/35 bg-white text-emerald-950 hover:bg-emerald-100/80"
+                }`}
+              >
+                {t(locale, "taskTypeQa")}
+              </button>
+              <button
+                type="button"
+                aria-pressed={taskType === "draft_with_qa"}
+                disabled={loading || ingesting || voiceTranscribing}
+                onClick={() => persistTaskType("draft_with_qa")}
+                className={`rounded-lg border px-3 py-2 text-sm font-medium transition disabled:opacity-50 ${
+                  taskType === "draft_with_qa"
+                    ? "border-emerald-800 bg-emerald-800 text-white shadow-sm"
+                    : "border-emerald-800/35 bg-white text-emerald-950 hover:bg-emerald-100/80"
+                }`}
+              >
+                {t(locale, "taskTypeBoth")}
+              </button>
+              <button
+                type="button"
+                aria-pressed={taskType === "consumer_complaint_filing"}
+                disabled={loading || ingesting || voiceTranscribing}
+                onClick={() => persistTaskType("consumer_complaint_filing")}
+                className={`rounded-lg border px-3 py-2 text-sm font-medium transition disabled:opacity-50 ${
+                  taskType === "consumer_complaint_filing"
+                    ? "border-emerald-800 bg-emerald-800 text-white shadow-sm"
+                    : "border-emerald-800/35 bg-white text-emerald-950 hover:bg-emerald-100/80"
+                }`}
+              >
+                {t(locale, "taskTypeConsumerFiling")}
+              </button>
+            </div>
+          </fieldset>
+        ) : null}
         <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
         <input
           ref={fileInputRef}

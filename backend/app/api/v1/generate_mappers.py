@@ -7,6 +7,7 @@ from app.api.v1.generate_schemas import (
     AuthorityHierarchyStepOut,
     AuthorityInfo,
     AuthoritySummaryOut,
+    CaseLawReferenceOut,
     ClarificationAgentQuestionOut,
     ClarificationPointOut,
     EmergencyContactOut,
@@ -32,6 +33,19 @@ def to_emergency_contacts(raw: object) -> list[EmergencyContactOut]:
         if isinstance(item, dict):
             try:
                 out.append(EmergencyContactOut.model_validate(item))
+            except Exception:
+                continue
+    return out
+
+
+def to_case_law_references(raw: object) -> list[CaseLawReferenceOut]:
+    if not isinstance(raw, list):
+        return []
+    out: list[CaseLawReferenceOut] = []
+    for item in raw:
+        if isinstance(item, dict):
+            try:
+                out.append(CaseLawReferenceOut.model_validate(item))
             except Exception:
                 continue
     return out

@@ -6,6 +6,8 @@ import unittest.mock as mock
 
 import pytest
 
+pytestmark = pytest.mark.rag
+
 from app.ai.rag_pipeline import run_strict_rag_pipeline
 from app.config import settings
 from app.rag import pinecone_legal_index as pci
@@ -48,16 +50,30 @@ def test_pinecone_happy_path(mock_index, _em, caplog, monkeypatch: pytest.Monkey
     class R:
         matches = [M()]
 
-    def fake_query(
-        *a,
-        **kw,
-    ):
+    captured: dict[str, object] = {}
+
+    def fake_query(*a, **kw):
+        captured["kw"] = kw
         return R()
 
     mock_index.return_value.query = fake_query
 
     caplog.set_level("INFO", logger="app.ai.rag_pipeline")
-    r = run_strict_rag_pipeline("I need a police FIR in Varanasi", "police", top_k=3)
+    r = run_strict_rag_pipeline(
+        "I need a police FIR in Varanasi under BNSS 2023",
+        "police",
+        top_k=3,
+        metadata_hints={"act_id": "bnss-2023", "source_year": 2023},
+    )
     assert isinstance(r.get("retrieved_laws"), list)
     lines = " ".join(caplog.messages)
     assert "rag_pipeline" in lines
+    qkw = captured.get("kw")
+    assert isinstance(qkw, dict)
+    assert "filter" in qkw
+    assert qkw.get("filter") == {
+        "$and": [
+            {"act_id": {"$eq": "bnss-2023"}},
+            {"source_year": {"$eq": 2023}},
+        ]
+    }
