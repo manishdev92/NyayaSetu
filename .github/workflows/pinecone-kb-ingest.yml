@@ -1,8 +1,11 @@
 # Primary way to refresh Pinecone from repo: upsert `knowledge_seed.json` (curated KB).
 # Manual `workflow_dispatch` only (not on every push). Same commit you merge is what gets ingested.
 #
-# Secrets: OPENAI_API_KEY, PINECONE_API_KEY, PINECONE_INDEX · optional PINECONE_NAMESPACE
-# Optional: add `environment: pinecone-prod` to the `ingest` job + Environment with required reviewers.
+# Repository **Secrets** (Settings → Secrets and variables → Actions → *Secrets* tab):
+#   OPENAI_API_KEY, PINECONE_API_KEY  (required; never use *Variables* for API keys)
+#   PINECONE_INDEX — use a Secret, OR a **Variable** named PINECONE_INDEX (index name is non-secret)
+# Optional: PINECONE_NAMESPACE (Secret or Variable)
+# If you use *Environment* secrets, add:  environment: that-env-name  to the `ingest` job below.
 name: Pinecone KB ingest (curated)
 on:
   workflow_dispatch: {}
@@ -27,11 +30,17 @@ jobs:
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           PINECONE_API_KEY: ${{ secrets.PINECONE_API_KEY }}
-          PINECONE_INDEX: ${{ secrets.PINECONE_INDEX }}
-          PINECONE_NAMESPACE: ${{ secrets.PINECONE_NAMESPACE }}
+          # Index name is often stored as a Variable; API keys must be Secrets.
+          PINECONE_INDEX: ${{ secrets.PINECONE_INDEX || vars.PINECONE_INDEX }}
+          PINECONE_NAMESPACE: ${{ secrets.PINECONE_NAMESPACE || vars.PINECONE_NAMESPACE }}
         run: |
           if [ -z "$OPENAI_API_KEY" ] || [ -z "$PINECONE_API_KEY" ] || [ -z "$PINECONE_INDEX" ]; then
-            echo "Set secrets: OPENAI_API_KEY, PINECONE_API_KEY, PINECONE_INDEX"
+            echo "Missing required values. The log above shows empty env for missing items."
+            echo "Fix:"
+            echo "  1) Repo Settings → Secrets and variables → Actions"
+            echo "  2) Under **Secrets** (not Variables), add OPENAI_API_KEY and PINECONE_API_KEY"
+            echo "  3) Add PINECONE_INDEX as a Secret OR as a **Variable** (same name)"
+            echo "  4) If secrets live in an **Environment**, add 'environment: <name>' to the ingest job in this file."
             exit 1
           fi
           export PINECONE_NAMESPACE="${PINECONE_NAMESPACE:-}"

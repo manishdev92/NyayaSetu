@@ -30,7 +30,7 @@ This app can serve curated legal knowledge from an **in-process** embed index (`
 
 | Workflow | When | Repo secrets (minimum) |
 |----------|------|------------------------|
-| [`pinecone-kb-ingest.yml`](../../.github/workflows/pinecone-kb-ingest.yml) | Push curated `knowledge_seed.json` to `main`, then refresh Pinecone with that commit. | `OPENAI_API_KEY`, `PINECONE_API_KEY`, `PINECONE_INDEX` · optional `PINECONE_NAMESPACE` |
+| [`pinecone-kb-ingest.yml`](../../.github/workflows/pinecone-kb-ingest.yml) | Push curated `knowledge_seed.json` to `main`, then refresh Pinecone with that commit. | **Secrets:** `OPENAI_API_KEY`, `PINECONE_API_KEY` (must be under *Secrets*, not *Variables*). `PINECONE_INDEX` = Secret **or** **Variable** (same name). Optional `PINECONE_NAMESPACE` (Secret or Variable). |
 | [`pinecone-statute-s3-ingest.yml`](../../.github/workflows/pinecone-statute-s3-ingest.yml) | Ingest `*.md` from **S3** (licensed drops under a **prefix**). | Same three Pinecone/OpenAI · plus `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` with `s3:ListBucket` + `s3:GetObject` on the prefix · optional `S3_STATUTES_URI` or type **s3_uri** in the workflow form · optional Variable `AWS_DEFAULT_REGION` (default `ap-south-1`) |
 
 Steps: **Actions** → pick the workflow → **Run workflow** (branch = usually `main`). For S3, leave **dry_run** true on the first run, confirm the JSON summary, then run again with **dry_run** false to upsert.
