@@ -20,7 +20,7 @@ export type QueuedGenerate = {
   payload: GenerateRequestPayload;
 };
 
-function useIndexedDbQueue(): boolean {
+function idbQueueEnabled(): boolean {
   return (
     typeof window !== "undefined" &&
     process.env.NEXT_PUBLIC_OFFLINE_QUEUE_IDB === "1" &&
@@ -29,7 +29,7 @@ function useIndexedDbQueue(): boolean {
 }
 
 function maxItems(): number {
-  return useIndexedDbQueue() ? MAX_IDB : MAX_LS;
+  return idbQueueEnabled() ? MAX_IDB : MAX_LS;
 }
 
 function normalizePayload(p: Record<string, unknown>): GenerateRequestPayload | null {
@@ -40,6 +40,14 @@ function normalizePayload(p: Record<string, unknown>): GenerateRequestPayload | 
     rl === "hi" || rl === "en" || rl === "hi_latn" ? rl : undefined;
   const cm = p.client_mode;
   const client_mode = cm === "lawyer" || cm === "citizen" ? cm : undefined;
+  const task_type_raw = p.task_type;
+  const task_type =
+    task_type_raw === "qa_only" ||
+    task_type_raw === "draft_with_qa" ||
+    task_type_raw === "draft_letter" ||
+    task_type_raw === "consumer_complaint_filing"
+      ? task_type_raw
+      : undefined;
   return {
     user_input: ui.trim(),
     userId: typeof p.userId === "string" ? p.userId : p.userId === null ? null : undefined,
@@ -51,6 +59,7 @@ function normalizePayload(p: Record<string, unknown>): GenerateRequestPayload | 
     skip_clarification: p.skip_clarification === true ? true : undefined,
     response_language,
     client_mode,
+    task_type,
   };
 }
 
@@ -155,7 +164,7 @@ async function maybeMigrateLsToIdb(db: IDBDatabase): Promise<void> {
 }
 
 async function readAllAsync(): Promise<QueuedGenerate[]> {
-  if (!useIndexedDbQueue()) {
+  if (!idbQueueEnabled()) {
     return readQueuedFromLs();
   }
   const db = await openIdb();
@@ -181,7 +190,7 @@ export async function enqueueFailedGenerateAsync(payload: GenerateRequestPayload
     createdAt: new Date().toISOString(),
     payload: { ...payload },
   };
-  if (!useIndexedDbQueue()) {
+  if (!idbQueueEnabled()) {
     const list = readQueuedFromLs();
     list.unshift(item);
     while (list.length > cap) list.pop();
@@ -190,7 +199,7 @@ export async function enqueueFailedGenerateAsync(payload: GenerateRequestPayload
   }
   const db = await openIdb();
   await maybeMigrateLsToIdb(db);
-  let list = await idbGetAll(db);
+  const list = await idbGetAll(db);
   list.unshift(item);
   while (list.length > cap) {
     list.pop();
@@ -200,7 +209,7 @@ export async function enqueueFailedGenerateAsync(payload: GenerateRequestPayload
 
 export async function removeQueuedGenerateByIdAsync(id: string): Promise<void> {
   if (typeof window === "undefined") return;
-  if (!useIndexedDbQueue()) {
+  if (!idbQueueEnabled()) {
     writeQueuedToLs(readQueuedFromLs().filter((x) => x.id !== id));
     return;
   }
@@ -211,7 +220,7 @@ export async function removeQueuedGenerateByIdAsync(id: string): Promise<void> {
 
 export async function clearQueuedGeneratesAsync(): Promise<void> {
   if (typeof window === "undefined") return;
-  if (!useIndexedDbQueue()) {
+  if (!idbQueueEnabled()) {
     window.localStorage.removeItem(LS_KEY);
     return;
   }

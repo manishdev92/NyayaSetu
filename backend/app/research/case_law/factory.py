@@ -30,6 +30,7 @@ def _snippet_to_api_dict(s: Any) -> dict[str, Any]:
         "source": str(s.get("source") or "")[:120],
         "url": str(s.get("url") or "")[:2000],
         "snippet": str(s.get("snippet") or "")[:4000],
+        "relevance_reason": str(s.get("relevance_reason") or "")[:300],
     }
     y = s.get("year")
     if isinstance(y, int) and 1600 < y < 2200:

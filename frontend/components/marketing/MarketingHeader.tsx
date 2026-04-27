@@ -1,31 +1,69 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
 import { SignInButton, useAuth } from "@clerk/nextjs";
 import { marketingBundle, mpath, type MarketingLocale } from "@/lib/marketingBundles";
 import { NyayaSetuLogo, NyayaWordmark } from "./NyayaSetuLogo";
+
+/** Highlights the nav item that matches this marketing page (`/` vs `/hi`, hash for `#pricing`). */
+function marketingNavItemActive(
+  pathname: string,
+  hash: string,
+  locale: MarketingLocale,
+  itemPath: string,
+): boolean {
+  const onMarketingHome = pathname === "/" || pathname === "/hi";
+
+  if (itemPath === "/" || itemPath === "") {
+    return onMarketingHome && hash !== "#pricing";
+  }
+  if (itemPath.includes("#pricing")) {
+    return onMarketingHome && hash === "#pricing";
+  }
+
+  const hrefBase = mpath(locale, itemPath).split("#")[0];
+  return pathname === hrefBase || pathname.startsWith(`${hrefBase}/`);
+}
+
+function navItemClass(active: boolean): string {
+  return active
+    ? "rounded-lg px-3 py-2 text-sm font-semibold text-amber-950 ring-1 ring-amber-300/70 bg-amber-50"
+    : "rounded-lg px-3 py-2 text-sm font-medium text-stone-700 transition hover:bg-stone-100 hover:text-stone-900";
+}
 
 export function MarketingHeader({
   locale,
   pathSuffix,
 }: {
   locale: MarketingLocale;
-  /** e.g. `/pricing` or `` for home */
+  /** e.g. `/#pricing` or `` for home (used for locale switch) */
   pathSuffix: string;
 }) {
+  const pathname = usePathname();
   const { isSignedIn, isLoaded } = useAuth();
   const [open, setOpen] = useState(false);
+  const [routeHash, setRouteHash] = useState("");
   const b = marketingBundle(locale);
   const other: MarketingLocale = locale === "en" ? "hi" : "en";
   const switchHref = mpath(other, pathSuffix);
+
+  useEffect(() => {
+    const syncHash = () => setRouteHash(typeof window !== "undefined" ? window.location.hash : "");
+    syncHash();
+    window.addEventListener("hashchange", syncHash);
+    return () => window.removeEventListener("hashchange", syncHash);
+  }, []);
 
   return (
     <header className="sticky top-0 z-50 border-b border-stone-200/80 bg-white/90 backdrop-blur-md">
       <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-3 sm:px-6">
         <Link
           href={mpath(locale, "/")}
-          className="flex min-w-0 max-w-[min(100%,14rem)] items-center gap-2.5 sm:max-w-none md:gap-3"
+          className="flex min-w-0 max-w-[min(100%,14rem)] items-center gap-2.5 rounded-xl outline-offset-4 focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-600/80 sm:max-w-none md:gap-3"
+          aria-label={`NyayaSetu — ${b.chrome.home}`}
+          title={b.chrome.home}
         >
           <NyayaSetuLogo className="h-9 w-9 shrink-0" aria-hidden />
           <span className="flex min-w-0 flex-col leading-tight">
@@ -37,15 +75,19 @@ export function MarketingHeader({
         </Link>
 
         <nav className="hidden items-center gap-1 md:flex" aria-label="Primary">
-          {b.nav.map((item) => (
-            <Link
-              key={item.path}
-              href={mpath(locale, item.path)}
-              className="rounded-lg px-3 py-2 text-sm font-medium text-stone-700 transition hover:bg-stone-100 hover:text-stone-900"
-            >
-              {item.label}
-            </Link>
-          ))}
+          {b.nav.map((item) => {
+            const active = marketingNavItemActive(pathname, routeHash, locale, item.path);
+            return (
+              <Link
+                key={`${item.path}-${item.label}`}
+                href={mpath(locale, item.path)}
+                className={navItemClass(active)}
+                aria-current={active ? "page" : undefined}
+              >
+                {item.label}
+              </Link>
+            );
+          })}
         </nav>
 
         <div className="hidden items-center gap-2 md:flex">
@@ -103,16 +145,20 @@ export function MarketingHeader({
             >
               {locale === "en" ? "हिंदी" : "English"}
             </Link>
-            {b.nav.map((item) => (
-              <Link
-                key={item.path}
-                href={mpath(locale, item.path)}
-                className="rounded-lg px-3 py-2 text-sm font-medium text-stone-800"
-                onClick={() => setOpen(false)}
-              >
-                {item.label}
-              </Link>
-            ))}
+            {b.nav.map((item) => {
+              const active = marketingNavItemActive(pathname, routeHash, locale, item.path);
+              return (
+                <Link
+                  key={`${item.path}-${item.label}`}
+                  href={mpath(locale, item.path)}
+                  className={`rounded-lg px-3 py-2 text-sm ${active ? "bg-amber-50 font-semibold text-amber-950 ring-1 ring-amber-200/80" : "font-medium text-stone-800"}`}
+                  aria-current={active ? "page" : undefined}
+                  onClick={() => setOpen(false)}
+                >
+                  {item.label}
+                </Link>
+              );
+            })}
             <Link
               href="/chat"
               className="mt-2 rounded-xl bg-amber-800 px-3 py-2.5 text-center text-sm font-semibold text-white"

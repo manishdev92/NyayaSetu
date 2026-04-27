@@ -61,7 +61,7 @@ export default function RootLayout({
     <ClerkProvider>
       <html
         lang="en"
-        className={`${plusJakarta.variable} ${notoSans.variable} ${geistMono.variable} h-full antialiased`}
+        className={`${plusJakarta.variable} ${notoSans.variable} ${geistMono.variable} h-full scroll-smooth scroll-pt-20 antialiased`}
       >
         <body className="flex min-h-full flex-col font-sans antialiased">
           <ServiceWorkerRegister />

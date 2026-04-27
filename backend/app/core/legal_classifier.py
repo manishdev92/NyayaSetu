@@ -1,8 +1,13 @@
 """
-Deterministic legal classification — NO LLM.
-Priority (high-severity first): attempt_to_murder → sexual_offence → missing_person → assault →
-cyber/digital (before physical theft) → theft → police_oversight → labour → consumer → traffic →
-civil → financial → RTI → civic → education → women_child → senior → corporate → criminal loop → general.
+Deterministic legal classification — NO LLM. Every user issue goes through a single **ordered** rule
+chain: higher-severity / clearer buckets first, then more general paths. The output is *issue_type* +
+*router_intent* for the whole app (not tuned to one kind of case only).
+
+Priority (see rules below in source order): e.g. emergency violence → missing person →
+assault (non-battery) → **CPA retail/remote-purchase v. cyber** (one disambiguation block) →
+cyber proper → theft → … → **consumer** (general keyword block) → land, labour, traffic, family, etc. →
+general. Additional regexes only **de-conflict** routes that are easy to mix up (e.g. “online
+order” is often consumer law, not cybercrime) — they do not replace the rest of the chain.
 """
 
 from __future__ import annotations
@@ -100,6 +105,18 @@ _VIOLENT_SIMPLE = re.compile(
     r"\b(assault|assaulted|battery|attack|beaten|beating|beat\b|beat\s+me|hurt\s+me|grievous)\b",
     re.I,
 )
+
+_DEVICE_OR_PRODUCT_BATTERY = re.compile(
+    r"(?i)(?:(?:the|a|an|my|our)\s+)?(?:"
+    r"phone|phones|iphone|android|mobile|laptop|tablet|car|ev|lithium|watch|tw[s']|earbuds?)\S*\s+battery\b|"
+    r"battery\s+is\s+(defective|weak|drained|low|not\s+charging|faulty|swollen)|"
+    r"battery's\s+life|battery\s+life|battery\s+problem",
+)
+
+
+def _device_or_product_battery_context(t: str) -> bool:
+    """True if 'battery' likely means electronics — not 'assault and battery'."""
+    return bool(_DEVICE_OR_PRODUCT_BATTERY.search(t))
 
 _HINDI_ASSAULT = re.compile(r"\b(maar\s*peet|pitai|मारपीट)\b", re.I)
 
@@ -244,8 +261,55 @@ _THREAT_CRIMINAL = re.compile(
 )
 
 
+# E-commerce / retail: "online" alone must not outrank CPA consumer forums (defect, delay, refund, seller).
+_ECOMMERCE_CONSUMER_SHOPPING = re.compile(
+    r"\b("
+    r"consumer\s+complaint|file\s+a\s+consumer|district\s+consumer|dcdrc|ncdrc|commission\s+complaint|"
+    r"defect(ive|)?|refund|warranty|return|replacement|delivery|courier|order\s*numbers?|e-?commerce|e[\s-]?com|"
+    r"bought|purchas(ed|e|ing|es)?|flipkart|amazon|meesho|myntra|website|order(?!\s+of\s+court)|\borders?\b|"
+    r"seller|unfair\s+trade|deficiency\s+of\s+service|"
+    r"overcharg|over\s+pric|invoice"
+    r")\b",
+    re.I,
+)
+
+
+def _consumer_cpa_retail_purchase_dispute(t: str) -> bool:
+    """
+    **Goods / services** bought as a consumer (remote order, app, store counter, website, etc.) with a
+    grievance (defect, refund, delivery, warranty…). If true, route to **consumer (CPA)** before the
+    generic *cyber* path, so “I ordered / I bought + problem” is not the same as *cybercrime*.
+    Not limited to e-commerce sites — same idea for any retail purchase + dispute wording.
+    """
+    low = (t or "").lower()
+    if re.search(
+        r"\b(hack|hacking|phish|upi\s+fraud|data\s+breach|ransom|kidnap|stolen|theft|rob\w*|rape|molest|assault\w*)\b",
+        low,
+    ) and "defect" not in low and "warranty" not in low and "refund" not in low:
+        return False
+    shop = re.search(
+        r"(?i)\b(online|web\s*site|e-?com|bought|purchas\w*|order|delivery|seller|flipkart|amazon|meesho|"
+        r"myntra|marketplace|e-?commerce|invoice|mobile\s+phone|phone|product|app\s*\.|"
+        r"shipment|courier|unfair\s+trade|consumer\s*protection|dcdrc|consumer\s+commission|complaint\s+against|"
+        r"₹|rupees?|inr)\b",
+        t,
+    )
+    harm = re.search(
+        r"(?i)\bdefect(ive|)?|warranty|refund|return|replace|deficien|"
+        r"not\s+working|faulty|late\s+deliver|delay|broken|battery|denied|refus|lemon\b",
+        t,
+    )
+    return bool(shop and harm)
+
+
 def _cyber_route(t: str) -> bool:
     """Digital / online / identity signals — prefer cyber over physical theft (TASK 6)."""
+    low = t.strip()
+    if re.search(
+        r"\b(online|internet|e-?commerce|e[\s-]?com|digital\s+purchase|app)\b", low, re.I
+    ) and _ECOMMERCE_CONSUMER_SHOPPING.search(low):
+        # E.g. "bought a phone online … defective" → consumer, not generic cyber/online
+        return False
     if any(p.search(t) for p in _CYBER):
         return True
     if re.search(r"\b(online|internet|digital|otp|upi|phishing|hacking|data\s+breach|cyber)\b", t, re.I):
@@ -387,7 +451,11 @@ def classify_legal_issue(
         return _finish(lc, meta)
 
     # --- 4. Non-sexual assault (English + Hinglish) ---
-    if (_VIOLENT_SIMPLE.search(t) or _HINDI_ASSAULT.search(t)) and not _SEXUAL_OR_SERIOUS_VIOLENCE.search(t):
+    if (
+        (_VIOLENT_SIMPLE.search(t) or _HINDI_ASSAULT.search(t))
+        and not _device_or_product_battery_context(t)
+        and not _SEXUAL_OR_SERIOUS_VIOLENCE.search(t)
+    ):
         meta = ClassifierMeta(
             domain="criminal",
             sub_type="assault",
@@ -404,6 +472,43 @@ def classify_legal_issue(
             sub_type="assault",
         )
         return _finish(lc, meta)
+
+    # --- 4.5 Consumer: retail / remote / app purchase + grievance (before generic cyber) ---
+    if _consumer_cpa_retail_purchase_dispute(t) or _consumer_cpa_retail_purchase_dispute(raw):
+        if _DEFECTIVE.search(t) or re.search(
+            r"\b(defect(ive|)?|warranty\s+claim|warranty\s+rejected|faulty|lemon|battery|"
+            r"broken|not\s+working|dead\s*on\s*arrival)\b",
+            t,
+            re.I,
+        ):
+            csub = "defective_product"
+        elif _SERVICE_DEF.search(t) or re.search(
+            r"\b(refund|return|replace|delivery|late|delay|shipment|courier|"
+            r"deficien|cancel\w*ed?\s*order|order\s+cancel)\b",
+            t,
+            re.I,
+        ):
+            csub = "service_deficiency"
+        else:
+            csub = "consumer_general"
+        meta = ClassifierMeta(
+            domain="consumer",
+            sub_type=csub,
+            category="consumer",
+            fine_intent="consumer_issue",
+            confidence=0.91,
+            confidence_score=0.91,
+            router_intent="consumer_issue",
+        )
+        return _finish(
+            LegalClassification(
+                issue_type="consumer",
+                severity="medium",
+                jurisdiction_type="state",
+                sub_type=csub,
+            ),
+            meta,
+        )
 
     # --- 5. Cyber / digital / identity (before physical theft; TASK 6) ---
     if _cyber_route(t):

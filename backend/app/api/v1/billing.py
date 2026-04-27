@@ -18,6 +18,8 @@ from app.services.pro_entitlements_store import (
     get_row,
     handle_stripe_event,
 )
+from app.services.usage_limit import effective_daily_limit_for_user
+from app.services.user_trial_store import trial_info
 
 logger = logging.getLogger(__name__)
 
@@ -75,24 +77,50 @@ def get_billing_entitlements(
     Pro state for the signed-in Clerk user (from webhook-persisted subscription rows).
     When `BILLING_MODE` is not `stripe`, returns `pro: false` (no DB lookup).
     """
+    base_inr = int(getattr(settings, "base_tier_price_inr", 1))
+    uid = x_user_id.strip() if isinstance(x_user_id, str) and x_user_id.strip() else None
     if settings.billing_mode != "stripe":
+        if not uid:
+            return {
+                "pro": False,
+                "subscription_status": None,
+                "daily_limit": int(settings.daily_limit_authenticated),
+                "in_trial": False,
+                "trial_ends_at_utc": None,
+                "base_tier_price_inr": base_inr,
+            }
+        ti = trial_info(uid)
+        cap = effective_daily_limit_for_user(uid)
         return {
             "pro": False,
             "subscription_status": None,
-            "daily_limit": int(settings.daily_limit_authenticated),
+            "daily_limit": cap,
+            "in_trial": bool(ti["in_trial"]),
+            "trial_ends_at_utc": ti["trial_ends_at_utc"],
+            "base_tier_price_inr": base_inr,
         }
-    uid = x_user_id.strip() if isinstance(x_user_id, str) and x_user_id.strip() else None
     if not uid:
         return {
             "pro": False,
             "subscription_status": None,
             "daily_limit": int(settings.daily_limit_anonymous),
+            "in_trial": False,
+            "trial_ends_at_utc": None,
+            "base_tier_price_inr": base_inr,
         }
     pro = clerk_has_pro_entitlement(uid)
     row = get_row(uid)
     st = str(row["status"]) if row is not None else None
-    cap = int(settings.daily_limit_pro) if pro else int(settings.daily_limit_authenticated)
-    return {"pro": pro, "subscription_status": st, "daily_limit": cap}
+    cap = int(settings.daily_limit_pro) if pro else effective_daily_limit_for_user(uid)
+    ti = trial_info(uid) if not pro else {"in_trial": False, "trial_ends_at_utc": None}
+    return {
+        "pro": pro,
+        "subscription_status": st,
+        "daily_limit": cap,
+        "in_trial": bool(ti["in_trial"]),
+        "trial_ends_at_utc": ti["trial_ends_at_utc"],
+        "base_tier_price_inr": base_inr,
+    }
 
 
 @router.post("/billing/create-checkout-session")

@@ -1,12 +1,17 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import {
   IngestRequestError,
   ingestDocument,
   streamGenerateLegalResponse,
   StreamNetworkFailed,
   transcribeAudio,
+  createChatThread,
+  fetchThreadMessages,
+  patchChatThreadTitle,
+  postChatMessage,
+  type ChatHistoryMessage,
   type ClarificationAgentQuestion,
   type ClarificationPoint,
   type GenerateRequestPayload,
@@ -53,6 +58,140 @@ type ChatMsg = {
 
 function uid(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+}
+
+function threadStorageKey(clerkUserId: string): string {
+  return `nyaya-chat-active-thread-${clerkUserId}`;
+}
+
+function titleFromFirstLine(text: string): string {
+  const line = text.split(/\n/)[0]?.trim() || text.trim();
+  const t = line.slice(0, 80).trim();
+  return t || "Chat";
+}
+
+function assistantMetaFromMsg(m: ChatMsg): Record<string, unknown> | undefined {
+  const o: Record<string, unknown> = {};
+  if (m.options && m.options.length > 0) o.options = m.options;
+  if (m.clarificationPoints && m.clarificationPoints.length > 0) o.clarificationPoints = m.clarificationPoints;
+  if (m.clarifyingQuestions && m.clarifyingQuestions.length > 0) o.clarifyingQuestions = m.clarifyingQuestions;
+  if (m.clarificationAgentQuestions && m.clarificationAgentQuestions.length > 0)
+    o.clarificationAgentQuestions = m.clarificationAgentQuestions;
+  if (m.clarificationOptional === true) o.clarificationOptional = true;
+  if (m.clarificationNeeded === true) o.clarificationNeeded = true;
+  return Object.keys(o).length > 0 ? o : undefined;
+}
+
+function chatRowToMsg(row: ChatHistoryMessage): ChatMsg {
+  const base: ChatMsg = {
+    id: row.id,
+    role: row.role,
+    content: row.content,
+  };
+  if (row.role !== "assistant" || !row.meta || typeof row.meta !== "object") return base;
+  const meta = row.meta as Record<string, unknown>;
+  const opts = meta.options;
+  const cq = meta.clarifyingQuestions;
+  const cp = meta.clarificationPoints;
+  const caq = meta.clarificationAgentQuestions;
+  return {
+    ...base,
+    options: Array.isArray(opts) ? opts.map(String) : undefined,
+    clarifyingQuestions: Array.isArray(cq) ? cq.map(String) : undefined,
+    clarificationPoints: Array.isArray(cp) ? (cp as ClarificationPoint[]) : undefined,
+    clarificationAgentQuestions: Array.isArray(caq) ? (caq as ClarificationAgentQuestion[]) : undefined,
+    clarificationOptional: meta.clarificationOptional === true,
+    clarificationNeeded: meta.clarificationNeeded === true,
+  };
+}
+
+function IconPaperclip({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+    </svg>
+  );
+}
+
+function IconMic({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+      <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+      <line x1="12" y1="19" x2="12" y2="23" />
+      <line x1="8" y1="23" x2="16" y2="23" />
+    </svg>
+  );
+}
+
+function IconArrowUp({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.25"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M12 19V5" />
+      <path d="m5 12 7-7 7 7" />
+    </svg>
+  );
+}
+
+function IconLineSpinner({ className, variant = "subtle" }: { className?: string; variant?: "subtle" | "onDark" }) {
+  const base =
+    variant === "onDark"
+      ? "h-4 w-4 border-white/30 border-t-white"
+      : "h-4 w-4 border-stone-200 border-t-amber-800";
+  return (
+    <span
+      className={`inline-block shrink-0 animate-spin rounded-full border-2 ${base} ${className ?? ""}`}
+      role="status"
+      aria-hidden
+    />
+  );
+}
+
+function IconInfo({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <circle cx="12" cy="12" r="10" />
+      <path d="M12 16v-4" />
+      <path d="M12 8h.01" />
+    </svg>
+  );
 }
 
 const CLIENT_MODE_STORAGE_KEY = "nyaya-client-mode";
@@ -111,10 +250,12 @@ export function LegalChat({
   lawyerProGateActive?: boolean;
   /** From `GET /billing/entitlements` when `billing_mode` is stripe — Pro subscription active. */
   proEntitled?: boolean;
-  /** P2-4: `NEXT_PUBLIC_RESPONSE_TASK_UI` at build time — `task_type` on generate body. */
+  /** P2-4: `NEXT_PUBLIC_RESPONSE_TASK_UI` at build time — show letter/Q&A/consumer style buttons (task is always sent when set, including from quick starts). */
   responseTaskUiEnabled?: boolean;
 }) {
   const [messages, setMessages] = useState<ChatMsg[]>([]);
+  /** Server-backed thread id when signed in (SQLite via API). */
+  const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [streamingAssistantId, setStreamingAssistantId] = useState<string | null>(null);
@@ -125,6 +266,7 @@ export function LegalChat({
   const [structuredSelections, setStructuredSelections] = useState<Record<string, string>>({});
   const [agentAnswerSelections, setAgentAnswerSelections] = useState<Record<string, string>>({});
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const [ingesting, setIngesting] = useState(false);
   const [voiceRecording, setVoiceRecording] = useState(false);
   const [voiceTranscribing, setVoiceTranscribing] = useState(false);
@@ -139,6 +281,61 @@ export function LegalChat({
   const [clientMode, setClientMode] = useState<"citizen" | "lawyer">("citizen");
   const [taskType, setTaskType] = useState<GenerateTaskType>("draft_letter");
   const loadingRef = useRef(false);
+  const messagesRef = useRef<ChatMsg[]>([]);
+  messagesRef.current = messages;
+  const activeThreadIdRef = useRef<string | null>(null);
+  activeThreadIdRef.current = activeThreadId;
+  const ensureThreadPromiseRef = useRef<Promise<string | null> | null>(null);
+  const needsThreadTitleRef = useRef(false);
+
+  const ensureThread = useCallback(async (): Promise<string | null> => {
+    const uid = userId?.trim();
+    if (!uid) return null;
+    if (activeThreadIdRef.current) return activeThreadIdRef.current;
+    if (ensureThreadPromiseRef.current) return ensureThreadPromiseRef.current;
+    const p = (async () => {
+      const t = await createChatThread(uid);
+      activeThreadIdRef.current = t.id;
+      setActiveThreadId(t.id);
+      needsThreadTitleRef.current = true;
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem(threadStorageKey(uid), t.id);
+      }
+      return t.id;
+    })();
+    ensureThreadPromiseRef.current = p;
+    try {
+      return await p;
+    } finally {
+      ensureThreadPromiseRef.current = null;
+    }
+  }, [userId]);
+
+  const startNewConversation = useCallback(() => {
+    setMessages([]);
+    activeThreadIdRef.current = null;
+    setActiveThreadId(null);
+    needsThreadTitleRef.current = false;
+    const uid = userId?.trim();
+    if (uid && typeof window !== "undefined") {
+      window.localStorage.removeItem(threadStorageKey(uid));
+    }
+  }, [userId]);
+
+  const persistSignedInUserTurn = useCallback(
+    async (displayedUserText: string) => {
+      const uidStr = userId?.trim();
+      if (!uidStr) return;
+      const tid = await ensureThread();
+      if (!tid) return;
+      await postChatMessage(uidStr, tid, { role: "user", content: displayedUserText }).catch(() => {});
+      if (needsThreadTitleRef.current) {
+        needsThreadTitleRef.current = false;
+        await patchChatThreadTitle(uidStr, tid, titleFromFirstLine(displayedUserText)).catch(() => {});
+      }
+    },
+    [userId, ensureThread],
+  );
   const canSelectLawyer =
     (!lawyerModeRequiresSignIn || Boolean(userId?.trim())) &&
     (!lawyerProGateActive || proEntitled);
@@ -146,7 +343,7 @@ export function LegalChat({
   const needLawyerSignInHint = Boolean(lawyerModeRequiresSignIn && !userId?.trim());
 
   useEffect(() => {
-    if (!responseTaskUiEnabled || typeof window === "undefined") return;
+    if (typeof window === "undefined") return;
     const raw = window.localStorage.getItem(TASK_TYPE_STORAGE_KEY);
     if (
       raw === "qa_only" ||
@@ -156,23 +353,14 @@ export function LegalChat({
     ) {
       setTaskType(raw);
     }
-  }, [responseTaskUiEnabled]);
+  }, []);
 
-  useEffect(() => {
-    if (!responseTaskUiEnabled) {
-      setTaskType("draft_letter");
+  const persistTaskType = useCallback((next: GenerateTaskType) => {
+    setTaskType(next);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(TASK_TYPE_STORAGE_KEY, next);
     }
-  }, [responseTaskUiEnabled]);
-
-  const persistTaskType = useCallback(
-    (t: GenerateTaskType) => {
-      setTaskType(t);
-      if (typeof window !== "undefined" && responseTaskUiEnabled) {
-        window.localStorage.setItem(TASK_TYPE_STORAGE_KEY, t);
-      }
-    },
-    [responseTaskUiEnabled],
-  );
+  }, []);
 
   useEffect(() => {
     if (!lawyerModeAvailable || typeof window === "undefined") return;
@@ -210,6 +398,43 @@ export function LegalChat({
 
   useEffect(() => {
     void getQueuedGenerateCountAsync().then(setPendingQueueCount);
+  }, []);
+
+  useEffect(() => {
+    if (!userId?.trim()) {
+      setActiveThreadId(null);
+      activeThreadIdRef.current = null;
+      return;
+    }
+    if (typeof window === "undefined") return;
+    const key = threadStorageKey(userId);
+    const saved = window.localStorage.getItem(key);
+    if (!saved) return;
+    let cancelled = false;
+    void fetchThreadMessages(userId, saved)
+      .then((rows) => {
+        if (cancelled) return;
+        activeThreadIdRef.current = saved;
+        setActiveThreadId(saved);
+        needsThreadTitleRef.current = false;
+        if (rows.length > 0) setMessages(rows.map(chatRowToMsg));
+      })
+      .catch(() => {
+        window.localStorage.removeItem(key);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [userId]);
+
+  useEffect(() => {
+    const id = window.setTimeout(() => {
+      const el = inputRef.current;
+      if (!el) return;
+      el.focus({ preventScroll: true });
+      el.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    }, 100);
+    return () => window.clearTimeout(id);
   }, []);
 
   const stopVoiceStream = useCallback(() => {
@@ -364,11 +589,7 @@ export function LegalChat({
         payload.client_mode = clientMode;
       }
       if (!fromQueueItem) {
-        if (responseTaskUiEnabled) {
-          payload.task_type = taskType;
-        } else {
-          delete (payload as { task_type?: GenerateTaskType }).task_type;
-        }
+        payload.task_type = taskType;
       }
       if (!payload.user_input.trim()) {
         setLoading(false);
@@ -387,9 +608,15 @@ export function LegalChat({
       let finalPayload: GenerateResponse | null = null;
       const streamOutcome: { last: GenerateResponse | null } = { last: null };
 
+      let assistantPlain = "";
+      const appendToStream = (chunk: string) => {
+        assistantPlain = assistantPlain ? `${assistantPlain}\n\n${chunk}` : chunk;
+        appendAssistantChunk(assistantId, chunk);
+      };
+
       const onEvent = (ev: StreamEvent) => {
         if (ev.type === "phase") {
-          appendAssistantChunk(assistantId, ev.message);
+          appendToStream(ev.message);
         } else if (ev.type === "clarification") {
           const agentQ = (ev.clarification_agent_questions ?? []).filter((q) => q.question && q.options.length > 0);
           const cqqRaw = ev.clarifying_questions?.filter((s) => s.trim()) ?? [];
@@ -401,9 +628,9 @@ export function LegalChat({
                 : [];
           activeAgentQuestionsRef.current = agentQ.length > 0 ? agentQ : null;
           if (agentQ.length > 0 || cqq.length >= 2) {
-            appendAssistantChunk(assistantId, ev.question || t(locale, "clarFastQuestions"));
+            appendToStream(ev.question || t(locale, "clarFastQuestions"));
           } else if (ev.question) {
-            appendAssistantChunk(assistantId, `❓ ${ev.question}`);
+            appendToStream(`❓ ${ev.question}`);
           }
           const pts = ev.points && ev.points.length > 0 ? ev.points : undefined;
           activeClarificationPointsRef.current = pts ?? null;
@@ -478,7 +705,7 @@ export function LegalChat({
             }
           }
           if (!ev.payload.clarification_needed && ev.payload.document?.trim()) {
-            appendAssistantChunk(assistantId, t(locale, "streamDone"));
+            appendToStream(t(locale, "streamDone"));
           }
         } else if (ev.type === "error") {
           onError(formatStreamErrorEvent(locale, ev));
@@ -504,6 +731,19 @@ export function LegalChat({
           onError(formatApiThrowable(locale, e));
         }
       } finally {
+        const persistAssistant = () => {
+          const uidStr = userId?.trim();
+          const tid = activeThreadIdRef.current;
+          if (!uidStr || !tid || !assistantPlain.trim()) return;
+          const am = messagesRef.current.find((m) => m.id === assistantId);
+          const meta = am?.role === "assistant" ? assistantMetaFromMsg(am) : undefined;
+          void postChatMessage(uidStr, tid, { role: "assistant", content: assistantPlain, meta }).catch(() => {});
+        };
+        if (typeof window !== "undefined") {
+          window.setTimeout(persistAssistant, 0);
+        } else {
+          persistAssistant();
+        }
         setStreamingAssistantId(null);
         setLoading(false);
         if (streamOutcome.last?.clarification_needed !== true) {
@@ -521,7 +761,6 @@ export function LegalChat({
       responseLanguage,
       lawyerModeAvailable,
       clientMode,
-      responseTaskUiEnabled,
       taskType,
     ],
   );
@@ -555,7 +794,7 @@ export function LegalChat({
     await runStream("", { fromQueueItem: oldest });
   }
 
-  async function handleSend(e?: React.FormEvent) {
+  async function handleSend(e?: FormEvent) {
     e?.preventDefault();
     const text = input.trim();
     if (!text || loading) return;
@@ -566,6 +805,7 @@ export function LegalChat({
       ? `${lastUserIssueRef.current.trim()}\n\n${t(locale, "mergeAdditional")} ${text}`
       : text;
     setMessages((prev) => [...prev, { id: uid(), role: "user", content: text }]);
+    await persistSignedInUserTurn(text);
     await runStream(merged, { skipClarification: Boolean(mergeClarification) });
   }
 
@@ -574,6 +814,7 @@ export function LegalChat({
     const follow = `${base}\n\n${t(locale, "mergeMyChoice")} ${option}`;
     setLoading(true);
     setMessages((prev) => [...prev, { id: uid(), role: "user", content: follow }]);
+    await persistSignedInUserTurn(follow);
     await runStream(follow, { skipClarification: true });
   }
 
@@ -589,6 +830,7 @@ export function LegalChat({
     setMessages((prev) => [...prev, { id: uid(), role: "user", content: follow }]);
     setStructuredSelections({});
     activeClarificationPointsRef.current = null;
+    await persistSignedInUserTurn(follow);
     await runStream(follow, { skipClarification: true });
   }
 
@@ -604,6 +846,7 @@ export function LegalChat({
     setMessages((prev) => [...prev, { id: uid(), role: "user", content: follow }]);
     setAgentAnswerSelections({});
     activeAgentQuestionsRef.current = null;
+    await persistSignedInUserTurn(follow);
     await runStream(follow, { skipClarification: true });
   }
 
@@ -614,24 +857,42 @@ export function LegalChat({
     await runStream(base, { skipClarification: true });
   }
 
-  const structuredReady =
-    activeClarificationPointsRef.current &&
-    activeClarificationPointsRef.current.length > 0 &&
-    activeClarificationPointsRef.current.every((p) => structuredSelections[p.label]?.trim());
-
   const lastAssistantId = [...messages].reverse().find((x) => x.role === "assistant")?.id;
   const lastAssistantMsg = messages.find((x) => x.id === lastAssistantId);
+  const clarificationPtsForStructured = lastAssistantMsg?.clarificationPoints;
+  const structuredReady =
+    !!clarificationPtsForStructured &&
+    clarificationPtsForStructured.length > 0 &&
+    clarificationPtsForStructured.every((p) => structuredSelections[p.label]?.trim());
   const agentQsForReady = lastAssistantMsg?.clarificationAgentQuestions;
   const agentClarificationReady =
     !!agentQsForReady &&
     agentQsForReady.length > 0 &&
     agentQsForReady.every((q) => agentAnswerSelections[q.id]?.trim());
 
-  return (
-    <section className="rounded-2xl border border-stone-200/90 bg-gradient-to-br from-white via-stone-50/40 to-amber-50/15 p-5 shadow-md ring-1 ring-stone-200/50 sm:p-7">
-      <h2 className="text-xl font-semibold tracking-tight text-stone-900">{t(locale, "chatH2")}</h2>
-      <p className="mt-2 max-w-3xl text-sm leading-relaxed text-stone-600 sm:text-base">{t(locale, "chatIntro")}</p>
+  const emptyThread = messages.length === 0;
 
+  return (
+    <section
+      className={
+        emptyThread
+          ? "rounded-3xl border border-amber-200/35 bg-gradient-to-b from-amber-50/50 via-white to-stone-50/40 p-4 shadow-lg shadow-amber-950/10 ring-1 ring-amber-900/15 sm:p-6"
+          : "rounded-2xl border border-stone-200/80 bg-gradient-to-b from-stone-50/50 to-white p-4 shadow-sm ring-1 ring-stone-200/40 sm:p-5"
+      }
+      aria-label={String(t(locale, "chatSectionAria"))}
+    >
+      {userId?.trim() ? (
+        <div className="mb-3 flex justify-end">
+          <button
+            type="button"
+            disabled={loading}
+            onClick={() => startNewConversation()}
+            className="rounded-xl border border-stone-300/90 bg-white px-3 py-2 text-sm font-semibold text-stone-800 shadow-sm transition hover:border-amber-400/70 hover:bg-amber-50/60 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {t(locale, "chatNewThread")}
+          </button>
+        </div>
+      ) : null}
       {pendingQueueCount > 0 ? (
         <div
           role="status"
@@ -673,11 +934,9 @@ export function LegalChat({
         </div>
       ) : null}
 
-      <div className="mt-5 max-h-[min(480px,58vh)] space-y-4 overflow-y-auto rounded-2xl border border-stone-200/80 bg-stone-50/90 p-4 shadow-inner sm:p-5">
-        {messages.length === 0 ? (
-          <p className="text-base text-stone-600">{t(locale, "emptyChat")}</p>
-        ) : (
-          messages.map((m) => {
+      {messages.length > 0 ? (
+      <div className="mt-3 max-h-[min(560px,62vh)] space-y-4 overflow-y-auto rounded-xl border border-stone-200/70 bg-white/60 p-3 sm:p-4">
+        {messages.map((m) => {
             const showClarifyControls = m.role === "assistant" && m.id === lastAssistantId;
             return (
             <div key={m.id} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
@@ -828,27 +1087,48 @@ export function LegalChat({
               </div>
             </div>
             );
-          })
-        )}
+          })}
       </div>
+      ) : null}
 
-      <form onSubmit={handleSend} className="mt-4 flex flex-col gap-2">
+      <form
+        onSubmit={handleSend}
+        className={`flex flex-col gap-2 ${messages.length > 0 ? "mt-3" : "mt-0"}`}
+      >
+        {emptyThread ? (
+          <div className="order-1 mb-1 rounded-2xl border border-amber-200/50 bg-gradient-to-br from-white to-amber-50/60 px-4 py-4 shadow-sm ring-1 ring-amber-800/15 sm:px-5 sm:py-5">
+            <p className="text-lg font-semibold tracking-tight text-stone-900 sm:text-xl">
+              {t(locale, "composerHeroTitle")}
+            </p>
+            <p className="mt-2 text-sm leading-relaxed text-stone-600">{t(locale, "composerHeroSub")}</p>
+          </div>
+        ) : null}
+        <div className={`flex flex-col gap-2 ${emptyThread ? "order-3" : "order-1"}`}>
         {lawyerModeAvailable ? (
-          <fieldset className="rounded-xl border border-indigo-200/80 bg-indigo-50/40 px-3 py-3 sm:px-4">
-            <legend className="px-1 text-sm font-semibold text-indigo-950">{t(locale, "clientModeLabel")}</legend>
-            <p className="mt-1 text-xs leading-relaxed text-indigo-950/80">{t(locale, "clientModeHint")}</p>
+          <fieldset className="rounded-lg border border-indigo-200/50 bg-indigo-50/20 px-2.5 py-2 sm:px-3 sm:py-2.5">
+            <legend className="flex w-full items-center gap-1.5 text-xs font-medium text-indigo-950/90 sm:text-sm">
+              <span>{t(locale, "clientModeLabel")}</span>
+              <button
+                type="button"
+                className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-indigo-800/50 transition hover:bg-indigo-100/90 hover:text-indigo-950"
+                title={String(t(locale, "clientModeHint"))}
+                aria-label={String(t(locale, "clientModeHint"))}
+              >
+                <IconInfo className="h-3.5 w-3.5" />
+              </button>
+            </legend>
             {needLawyerSignInHint ? (
-              <p className="mt-1 text-xs font-medium text-indigo-950/90">{t(locale, "clientModeLawyerNeedsSignIn")}</p>
+              <p className="mb-1.5 text-xs font-medium text-indigo-950/90">{t(locale, "clientModeLawyerNeedsSignIn")}</p>
             ) : needLawyerProHint ? (
-              <p className="mt-1 text-xs font-medium text-indigo-950/90">{t(locale, "clientModeLawyerNeedsPro")}</p>
+              <p className="mb-1.5 text-xs font-medium text-indigo-950/90">{t(locale, "clientModeLawyerNeedsPro")}</p>
             ) : null}
-            <div className="mt-2 flex flex-wrap gap-2" role="group" aria-label={String(t(locale, "clientModeLabel"))}>
+            <div className="mt-0 flex flex-wrap gap-1.5" role="group" aria-label={String(t(locale, "clientModeLabel"))}>
               <button
                 type="button"
                 aria-pressed={clientMode === "citizen"}
                 disabled={loading || ingesting || voiceTranscribing}
                 onClick={() => persistClientMode("citizen")}
-                className={`rounded-lg border px-3 py-2 text-sm font-medium transition disabled:opacity-50 ${
+                className={`rounded-md border px-2.5 py-1.5 text-xs font-medium transition disabled:opacity-50 sm:px-3 sm:py-1.5 sm:text-sm ${
                   clientMode === "citizen"
                     ? "border-indigo-800 bg-indigo-800 text-white shadow-sm"
                     : "border-indigo-800/35 bg-white text-indigo-950 hover:bg-indigo-100/80"
@@ -871,7 +1151,7 @@ export function LegalChat({
                     : undefined
                 }
                 onClick={() => persistClientMode("lawyer")}
-                className={`rounded-lg border px-3 py-2 text-sm font-medium transition disabled:opacity-50 ${
+                className={`rounded-md border px-2.5 py-1.5 text-xs font-medium transition disabled:opacity-50 sm:px-3 sm:py-1.5 sm:text-sm ${
                   clientMode === "lawyer"
                     ? "border-indigo-800 bg-indigo-800 text-white shadow-sm"
                     : "border-indigo-800/35 bg-white text-indigo-950 hover:bg-indigo-100/80"
@@ -883,16 +1163,25 @@ export function LegalChat({
           </fieldset>
         ) : null}
         {responseTaskUiEnabled ? (
-          <fieldset className="rounded-xl border border-emerald-200/80 bg-emerald-50/40 px-3 py-3 sm:px-4">
-            <legend className="px-1 text-sm font-semibold text-emerald-950">{t(locale, "taskTypeLabel")}</legend>
-            <p className="mt-1 text-xs leading-relaxed text-emerald-950/80">{t(locale, "taskTypeHint")}</p>
-            <div className="mt-2 flex flex-wrap gap-2" role="group" aria-label={String(t(locale, "taskTypeLabel"))}>
+          <fieldset className="rounded-lg border border-emerald-200/50 bg-emerald-50/20 px-2.5 py-2 sm:px-3 sm:py-2.5">
+            <legend className="flex w-full items-center gap-1.5 text-xs font-medium text-emerald-950/90 sm:text-sm">
+              <span>{t(locale, "taskTypeLabel")}</span>
+              <button
+                type="button"
+                className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-emerald-800/50 transition hover:bg-emerald-100/90 hover:text-emerald-950"
+                title={String(t(locale, "taskTypeHint"))}
+                aria-label={String(t(locale, "taskTypeHint"))}
+              >
+                <IconInfo className="h-3.5 w-3.5" />
+              </button>
+            </legend>
+            <div className="mt-0 flex flex-wrap gap-1.5" role="group" aria-label={String(t(locale, "taskTypeLabel"))}>
               <button
                 type="button"
                 aria-pressed={taskType === "draft_letter"}
                 disabled={loading || ingesting || voiceTranscribing}
                 onClick={() => persistTaskType("draft_letter")}
-                className={`rounded-lg border px-3 py-2 text-sm font-medium transition disabled:opacity-50 ${
+                className={`rounded-md border px-2.5 py-1.5 text-xs font-medium transition disabled:opacity-50 sm:px-3 sm:py-1.5 sm:text-sm ${
                   taskType === "draft_letter"
                     ? "border-emerald-800 bg-emerald-800 text-white shadow-sm"
                     : "border-emerald-800/35 bg-white text-emerald-950 hover:bg-emerald-100/80"
@@ -905,7 +1194,7 @@ export function LegalChat({
                 aria-pressed={taskType === "qa_only"}
                 disabled={loading || ingesting || voiceTranscribing}
                 onClick={() => persistTaskType("qa_only")}
-                className={`rounded-lg border px-3 py-2 text-sm font-medium transition disabled:opacity-50 ${
+                className={`rounded-md border px-2.5 py-1.5 text-xs font-medium transition disabled:opacity-50 sm:px-3 sm:py-1.5 sm:text-sm ${
                   taskType === "qa_only"
                     ? "border-emerald-800 bg-emerald-800 text-white shadow-sm"
                     : "border-emerald-800/35 bg-white text-emerald-950 hover:bg-emerald-100/80"
@@ -918,7 +1207,7 @@ export function LegalChat({
                 aria-pressed={taskType === "draft_with_qa"}
                 disabled={loading || ingesting || voiceTranscribing}
                 onClick={() => persistTaskType("draft_with_qa")}
-                className={`rounded-lg border px-3 py-2 text-sm font-medium transition disabled:opacity-50 ${
+                className={`rounded-md border px-2.5 py-1.5 text-xs font-medium transition disabled:opacity-50 sm:px-3 sm:py-1.5 sm:text-sm ${
                   taskType === "draft_with_qa"
                     ? "border-emerald-800 bg-emerald-800 text-white shadow-sm"
                     : "border-emerald-800/35 bg-white text-emerald-950 hover:bg-emerald-100/80"
@@ -931,7 +1220,7 @@ export function LegalChat({
                 aria-pressed={taskType === "consumer_complaint_filing"}
                 disabled={loading || ingesting || voiceTranscribing}
                 onClick={() => persistTaskType("consumer_complaint_filing")}
-                className={`rounded-lg border px-3 py-2 text-sm font-medium transition disabled:opacity-50 ${
+                className={`rounded-md border px-2.5 py-1.5 text-xs font-medium transition disabled:opacity-50 sm:px-3 sm:py-1.5 sm:text-sm ${
                   taskType === "consumer_complaint_filing"
                     ? "border-emerald-800 bg-emerald-800 text-white shadow-sm"
                     : "border-emerald-800/35 bg-white text-emerald-950 hover:bg-emerald-100/80"
@@ -942,7 +1231,8 @@ export function LegalChat({
             </div>
           </fieldset>
         ) : null}
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+        </div>
+        <div className="order-2 w-full max-w-4xl mx-auto">
         <input
           ref={fileInputRef}
           type="file"
@@ -1006,62 +1296,106 @@ export function LegalChat({
               });
           }}
         />
-        <label className="block flex-1 text-sm font-medium text-stone-700 sm:text-base">
-          {t(locale, "yourMessage")}
+        <div
+          className={
+            emptyThread
+              ? "overflow-hidden rounded-2xl border-2 border-amber-400/40 bg-white shadow-lg shadow-amber-950/10 ring-2 ring-amber-500/20 transition focus-within:border-amber-600/70 focus-within:ring-amber-500/35"
+              : "overflow-hidden rounded-2xl border border-stone-200/90 bg-white shadow-sm ring-1 ring-stone-200/30 transition focus-within:border-amber-500/45 focus-within:ring-2 focus-within:ring-amber-500/20"
+          }
+        >
+          <label htmlFor="nyaya-composer" className="sr-only">
+            {t(locale, "yourMessage")}
+          </label>
           <textarea
+            id="nyaya-composer"
+            ref={inputRef}
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            rows={4}
+            onKeyDown={(e: KeyboardEvent<HTMLTextAreaElement>) => {
+              if (e.key !== "Enter" || e.shiftKey) return;
+              e.preventDefault();
+              if (loading || ingesting || voiceTranscribing || !e.currentTarget.value.trim()) return;
+              void handleSend();
+            }}
+            rows={emptyThread ? 4 : 1}
             disabled={loading || ingesting || voiceTranscribing}
             placeholder={t(locale, "msgPlaceholder")}
-            className="mt-2 min-h-[8.5rem] w-full resize-y rounded-xl border border-stone-200 bg-white px-3.5 py-3 text-base leading-relaxed text-stone-900 shadow-sm outline-none ring-amber-700/15 focus:border-amber-600 focus:ring-2 sm:min-h-[9rem]"
-          />
-        </label>
-        <div className="flex shrink-0 flex-col gap-1.5 sm:items-stretch">
-          <button
-            type="button"
-            disabled={loading || ingesting || voiceTranscribing}
-            onClick={() => fileInputRef.current?.click()}
-            className="rounded-xl border border-amber-800/35 bg-amber-50/90 px-4 py-3 text-base font-medium text-amber-950 shadow-sm hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {ingesting ? t(locale, "readFile") : t(locale, "attach")}
-          </button>
-          <button
-            type="button"
-            disabled={loading || ingesting || voiceTranscribing}
-            onClick={() => void handleVoiceToggle()}
-            aria-pressed={voiceRecording}
-            className={`rounded-xl border px-4 py-3 text-base font-medium shadow-sm disabled:cursor-not-allowed disabled:opacity-50 ${
-              voiceRecording
-                ? "border-rose-700/50 bg-rose-600 text-white hover:bg-rose-700"
-                : "border-amber-800/35 bg-white text-amber-950 hover:bg-amber-50/90"
+            title={String(t(locale, "composerSendShortcutHint"))}
+            className={`max-h-[min(40vh,20rem)] w-full resize-y border-0 bg-transparent px-3 py-2.5 text-base leading-relaxed text-stone-900 placeholder:text-stone-400 focus:outline-none focus:ring-0 sm:px-3.5 sm:py-3 ${
+              emptyThread
+                ? "min-h-[7.5rem] text-[1.05rem] placeholder:text-stone-500 sm:min-h-[8rem]"
+                : "min-h-[2.75rem]"
             }`}
-          >
-            {voiceTranscribing
-              ? t(locale, "voiceTranscribing")
-              : voiceRecording
-                ? t(locale, "voiceStop")
-                : t(locale, "voiceRecord")}
-          </button>
-          <button
-            type="submit"
-            disabled={loading || ingesting || voiceTranscribing || !input.trim()}
-            className="rounded-xl bg-amber-800 px-6 py-3 text-base font-semibold text-white shadow-md hover:bg-amber-900 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {loading ? t(locale, "working") : t(locale, "send")}
-          </button>
+          />
+          <div className="flex items-center justify-between gap-2 border-t border-stone-100/90 bg-stone-50/50 px-2 py-1.5 pl-1.5">
+            <div className="flex min-w-0 items-center gap-0.5">
+              <button
+                type="button"
+                disabled={loading || ingesting || voiceTranscribing}
+                onClick={() => fileInputRef.current?.click()}
+                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-stone-500 transition hover:bg-stone-100/90 hover:text-amber-900 disabled:cursor-not-allowed disabled:opacity-40"
+                title={ingesting ? String(t(locale, "readFile")) : String(t(locale, "attach"))}
+                aria-label={ingesting ? String(t(locale, "readFile")) : String(t(locale, "attach"))}
+              >
+                {ingesting ? <IconLineSpinner variant="subtle" /> : <IconPaperclip className="h-5 w-5" />}
+              </button>
+              <button
+                type="button"
+                disabled={loading || ingesting || voiceTranscribing}
+                onClick={() => void handleVoiceToggle()}
+                aria-pressed={voiceRecording}
+                title={String(
+                  voiceTranscribing
+                    ? t(locale, "voiceTranscribing")
+                    : voiceRecording
+                      ? t(locale, "voiceStop")
+                      : t(locale, "voiceHint"),
+                )}
+                aria-label={
+                  voiceTranscribing
+                    ? String(t(locale, "voiceTranscribing"))
+                    : voiceRecording
+                      ? String(t(locale, "voiceStop"))
+                      : String(t(locale, "voiceRecord"))
+                }
+                className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition disabled:cursor-not-allowed disabled:opacity-40 ${
+                  voiceTranscribing
+                    ? "text-amber-800/90"
+                    : voiceRecording
+                      ? "bg-rose-100 text-rose-700 ring-1 ring-rose-300/80 hover:bg-rose-200/80"
+                      : "text-stone-500 hover:bg-stone-100/90 hover:text-amber-900"
+                }`}
+              >
+                {voiceTranscribing ? <IconLineSpinner variant="subtle" /> : <IconMic className="h-5 w-5" />}
+              </button>
+            </div>
+            <button
+              type="submit"
+              disabled={loading || ingesting || voiceTranscribing || !input.trim()}
+              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-amber-800 text-white shadow-sm transition hover:bg-amber-900 disabled:cursor-not-allowed disabled:bg-stone-200 disabled:text-stone-400"
+              title={loading ? String(t(locale, "working")) : String(t(locale, "send"))}
+              aria-label={loading ? String(t(locale, "working")) : String(t(locale, "send"))}
+            >
+              {loading ? <IconLineSpinner variant="onDark" /> : <IconArrowUp className="h-5 w-5" />}
+            </button>
+          </div>
         </div>
         </div>
-        <p className="text-sm leading-relaxed text-stone-600">{t(locale, "voiceHint")}</p>
-        {maxUploadBytes != null ? (
-          <p className="text-sm text-stone-600">
-            {t(locale, "attachSizeHint")(formatMaxUploadMbLabel(maxUploadBytes))}
+        {maxUploadBytes != null || ingestOcrReady ? (
+          <p className="order-4 text-center text-xs leading-snug text-stone-500 sm:text-left">
+            {maxUploadBytes != null
+              ? t(locale, "attachSizeHint")(formatMaxUploadMbLabel(maxUploadBytes))
+              : null}
+            {maxUploadBytes != null && ingestOcrReady ? (
+              <span className="whitespace-nowrap" aria-hidden>
+                {" "}
+                ·{" "}
+              </span>
+            ) : null}
+            {ingestOcrReady ? t(locale, "attachOcrHint") : null}
           </p>
         ) : null}
-        {ingestOcrReady ? (
-          <p className="text-sm text-stone-600">{t(locale, "attachOcrHint")}</p>
-        ) : null}
-        {ingestNote ? <p className="text-sm text-stone-700">{ingestNote}</p> : null}
+        {ingestNote ? <p className="order-4 text-sm text-stone-600">{ingestNote}</p> : null}
       </form>
     </section>
   );

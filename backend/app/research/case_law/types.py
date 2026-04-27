@@ -13,3 +13,4 @@ class CaseLawSnippet(TypedDict, total=False):
     source: str
     url: str
     snippet: str
+    relevance_reason: str

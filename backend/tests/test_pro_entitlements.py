@@ -11,6 +11,7 @@ from app.config import settings
 from app.main import app
 from app.services import usage_limit as ul
 from app.services.pro_entitlements_store import reset_pro_entitlements_store_for_tests
+from app.services.user_trial_store import reset_trial_store_for_tests
 
 
 @pytest.fixture(autouse=True)
@@ -18,9 +19,13 @@ def _reset_entitlements_db(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     """Isolated SQLite file per test."""
     db = tmp_path / f"ent_{uuid.uuid4().hex}.sqlite"
     monkeypatch.setattr(settings, "entitlements_db_path", str(db), raising=False)
+    monkeypatch.setattr(settings, "trial_period_days", 0, raising=False)
+    monkeypatch.setattr(settings, "trial_db_path", str(tmp_path / f"trial_{uuid.uuid4().hex}.sqlite"), raising=False)
     reset_pro_entitlements_store_for_tests()
+    reset_trial_store_for_tests()
     yield
     reset_pro_entitlements_store_for_tests()
+    reset_trial_store_for_tests()
 
 
 def test_webhook_checkout_completed_then_entitlements(

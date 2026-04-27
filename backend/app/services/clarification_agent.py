@@ -100,7 +100,7 @@ def maybe_attach_pipeline_clarification_questions(
 ) -> ClassifierMeta:
     """
     When confidence is below 0.90 or the case is ambiguous, attach Phase 6 intake questions
-    for the API layer (optional re-call with clarification_followup, max 2 rounds).
+    for the API layer (optional re-call with clarification_followup; round cap is configurable).
     """
     m: dict[str, Any] = {**meta}
     conf = max(float(m.get("confidence") or 0), float(m.get("confidence_score") or 0))
@@ -108,7 +108,7 @@ def maybe_attach_pipeline_clarification_questions(
         "general_issue",
         "unknown",
     )
-    if clarification_round >= 2:
+    if clarification_round >= settings.clarification_max_rounds:
         m["phase6_pipeline_clarification_done"] = True
         return m  # type: ignore[return-value]
     combined = (user_input or "").strip()

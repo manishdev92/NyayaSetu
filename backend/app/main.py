@@ -5,6 +5,8 @@ from app.api.v1.billing import router as billing_router, stripe_checkout_ready, 
 from app.api.v1.config_public import router as config_public_router
 from app.api.v1.generate import router as generate_router
 from app.api.v1.dashboard_cases import router as dashboard_cases_router
+from app.api.v1.chat_history import router as chat_history_router
+from app.api.v1.feedback import router as feedback_router
 from app.api.v1.ingest import router as ingest_router
 from app.api.v1.transcribe import router as transcribe_router
 from app.config import settings
@@ -33,6 +35,8 @@ app.include_router(generate_router, tags=["generate"])
 app.include_router(ingest_router, tags=["ingest"])
 app.include_router(transcribe_router, tags=["transcribe"])
 app.include_router(dashboard_cases_router, tags=["dashboard"])
+app.include_router(chat_history_router, tags=["chat"])
+app.include_router(feedback_router, tags=["feedback"])
 
 
 @app.get("/health")

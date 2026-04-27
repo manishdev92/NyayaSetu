@@ -80,10 +80,27 @@ function PartBlock({ part }: { part: LetterSegment }) {
   return <BodyBlocks text={part.content} />;
 }
 
-export function FormattedLetter({ text, emptyLabel }: { text: string; emptyLabel: string }) {
+export function FormattedLetter({
+  text,
+  emptyLabel,
+  presentation = "formatted",
+}: {
+  text: string;
+  emptyLabel: string;
+  /** `raw`: show LLM output verbatim (no To/Subject segmentation). Use for refiner second pass. */
+  presentation?: "formatted" | "raw";
+}) {
   const trimmed = text?.trim() ?? "";
   if (!trimmed) {
     return <p className="text-base text-stone-600">{emptyLabel}</p>;
+  }
+
+  if (presentation === "raw") {
+    return (
+      <div className="legal-letter-body text-stone-900">
+        <div className="whitespace-pre-wrap text-base leading-[1.75] text-stone-900">{trimmed}</div>
+      </div>
+    );
   }
 
   const parts = segmentFormalLetter(trimmed);

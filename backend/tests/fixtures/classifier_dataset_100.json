@@ -388,7 +388,7 @@
       "issue_type": "consumer",
       "domain": "consumer",
       "router_intent": "consumer_issue",
-      "sub_type": "consumer_general",
+      "sub_type": "service_deficiency",
       "severity": "medium",
       "jurisdiction_type": "state"
     },

@@ -3,9 +3,18 @@
 export type MarketingLocale = "en" | "hi";
 
 export function mpath(locale: MarketingLocale, path: string): string {
-  const p = path === "/" || path === "" ? "" : path.startsWith("/") ? path : `/${path}`;
-  if (locale === "en") return p === "" ? "/" : p;
-  return p === "" ? "/hi" : `/hi${p}`;
+  const hashIdx = path.indexOf("#");
+  const hashPart = hashIdx >= 0 ? path.slice(hashIdx) : "";
+  const pathOnly = hashIdx >= 0 ? path.slice(0, hashIdx) : path;
+  const p =
+    pathOnly === "/" || pathOnly === "" ? "" : pathOnly.startsWith("/") ? pathOnly : `/${pathOnly}`;
+  let base: string;
+  if (locale === "en") {
+    base = p === "" ? "/" : p;
+  } else {
+    base = p === "" ? "/hi" : `/hi${p}`;
+  }
+  return base + hashPart;
 }
 
 export type NavItem = { path: string; label: string };
@@ -14,6 +23,8 @@ export type MarketingBundle = {
   locale: MarketingLocale;
   nav: NavItem[];
   chrome: {
+    /** Explicit homepage label (nav + footer + logo accessibility). */
+    home: string;
     signIn: string;
     openApp: string;
     menu: string;
@@ -49,9 +60,38 @@ export type MarketingBundle = {
   featureBlocks: { title: string; body: string }[];
   howItWorksSteps: { step: string; title: string; body: string }[];
   pricingNotes: {
-    intro: string;
+    kicker: string;
     title: string;
-    tiers: { name: string; price: string; blurb: string; bullets: string[] }[];
+    intro: string;
+    /** Short value props under the hero (e.g. “No card to try”). */
+    heroPills: string[];
+    sectionLive: string;
+    /** Reassuring line above the live limits card. */
+    sectionLiveSub: string;
+    /** Replaces the generic `liveCaps.title` on the pricing page only. */
+    livePanelTitle: string;
+    /** One line under the live limits (e.g. about rollout / Stripe). */
+    liveSectionFootnote: string;
+    sectionPlans: string;
+    sectionPlansSub: string;
+    sectionCompare: string;
+    compareSub: string;
+    /** First column label in the compare table. */
+    compareColFeature: string;
+    tiers: {
+      name: string;
+      price: string;
+      priceSub?: string;
+      blurb: string;
+      bullets: string[];
+      cta: string;
+      /** Visually lift this card (e.g. recommended tier). */
+      highlight?: boolean;
+      /** Optional ribbon (e.g. "Recommended"). */
+      badge?: string;
+    }[];
+    /** Feature comparison: three columns = Guest | Signed in | Pro */
+    compareRows: { label: string; guest: string; signed: string; pro: string }[];
     openApp: string;
   };
   faqItems: { q: string; a: string }[];
@@ -74,6 +114,14 @@ export type MarketingBundle = {
   blogTitle: string;
   blogIntro: string;
   blogSoon: string;
+  /** Minimal home hero — fuller copy stays on `/features`, `/about`, etc. */
+  landing: {
+    headline: string;
+    subline: string;
+    openChat: string;
+    seePricing: string;
+    legalNote: string;
+  };
   liveCaps: {
     title: string;
     loading: string;
@@ -85,21 +133,25 @@ export type MarketingBundle = {
     rag: string;
     stripeCheckout: string;
     stripePortal: string;
+    /** Short label row: trial length, caps, base ₹ (values come from live API numbers). */
+    signupOfferLabel: string;
   };
 };
 
 const EN: MarketingBundle = {
   locale: "en",
   nav: [
+    { path: "/", label: "Home" },
     { path: "/features", label: "Features" },
     { path: "/how-it-works", label: "How it works" },
-    { path: "/pricing", label: "Pricing" },
+    { path: "/#pricing", label: "Pricing" },
     { path: "/faq", label: "FAQ" },
     { path: "/about", label: "About" },
     { path: "/blog", label: "Blog" },
     { path: "/contact", label: "Contact" },
   ],
   chrome: {
+    home: "Home",
     signIn: "Sign in",
     openApp: "Open app",
     menu: "Menu",
@@ -123,6 +175,13 @@ const EN: MarketingBundle = {
       "Describe your issue in plain language. Get structured guidance, authority-aware drafting, and practical next steps—with safety gates for emergencies and clear disclaimers.",
     primaryCta: "Open the assistant",
     secondaryCta: "See how it works",
+  },
+  landing: {
+    headline: "Legal help that starts in the chat",
+    subline: "Plain-language guidance and drafts for everyday Indian contexts—not a law firm.",
+    openChat: "Open chat",
+    seePricing: "Plans & limits below",
+    legalNote: "Educational tool—not legal advice.",
   },
   home: {
     trustH2: "Why teams ship NyayaSetu",
@@ -192,27 +251,95 @@ const EN: MarketingBundle = {
     },
   ],
   pricingNotes: {
+    kicker: "Start free · No friction",
+    title: "Bring legal clarity to more Indians—begin at ₹0",
     intro:
-      "NyayaSetu is built so each deployment can set its own limits and billing. The values below describe a typical setup; your live app shows actual caps after sign-in.",
-    title: "Pricing",
+      "Our first job is to get you comfortable: try the assistant instantly, add a free account for a bigger daily allowance, and move to Pro when you outgrow the basics. In the first months we are prioritising reach and feedback—help us improve while you get structured guidance, drafts, and next steps. Numbers for this app are always shown transparently at the bottom of this page.",
+    heroPills: ["No payment to try", "Create a free account anytime", "Pro for heavy use & teams"],
+    sectionLive: "What this app offers you today",
+    sectionLiveSub:
+      "Exact caps refresh from our servers—sign in to unlock your full signed-in allowance. If billing is not live yet, your free tiers stay free; Pro checkout will simply appear in-app when we turn it on.",
+    livePanelTitle: "Your current limits on this site",
+    liveSectionFootnote:
+      "RAG, billing, and paywall settings below reflect how this deployment is run today. They are not a limitation on our roadmap—they help you trust what you see in the product.",
+    sectionPlans: "Pick how you want to start",
+    sectionPlansSub:
+      "The same core assistant on every path: it understands your issue, guides you, and drafts when appropriate. The only differences are your daily request budget and, if you need it, a Pro plan for the highest limits and extra depth.",
+    sectionCompare: "What you get side by side",
+    compareSub:
+      "Pro adds the top daily allowance and optional deeper (e.g. lawyer-style) context where the app makes it available. We keep guest and free-account paths generous on purpose so more people can try NyayaSetu while we keep improving.",
+    compareColFeature: "Benefit",
     tiers: [
       {
-        name: "Guest",
-        price: "Free",
-        blurb: "Try the assistant with a modest daily request budget.",
-        bullets: ["No account required on many deployments", "Good for one-off questions"],
+        name: "Try first",
+        price: "₹0",
+        priceSub: "Guest use — no sign-up on this site for many people",
+        blurb: "Get a feel for the assistant: plain-language questions, streaming replies, and a small daily cap. Ideal for a quick check before you create an account.",
+        bullets: [
+          "Open the chat and go—no sign-up for many visitors",
+          "No payment details to try the basics",
+        ],
+        cta: "Open the app",
+        highlight: false,
       },
       {
-        name: "Signed in",
-        price: "Free",
-        blurb: "Higher daily limits when you authenticate (e.g. Clerk).",
-        bullets: ["Usage tracked per user id", "Unlocks dashboard or saved cases where enabled"],
+        name: "Free account",
+        price: "₹1/day",
+        priceSub: "Free account after trial — ₹1 per calendar day · up to 10 assistant requests/day (UTC) · trial is free · billing when enabled",
+        blurb:
+          "New sign-ins get a 7-day trial with a higher daily allowance. After that, your free account is ₹1 per day for up to 10 requests per UTC day (shown for transparency; Stripe will collect when billing goes live). No surprise charges while billing is off.",
+        bullets: [
+          "7-day trial with elevated daily caps vs guest",
+          "Then free account: ₹1/day · up to 10 requests/day (UTC)",
+        ],
+        cta: "Create a free account",
+        highlight: true,
+        badge: "Best to onboard",
       },
       {
         name: "Pro",
-        price: "Per deployment",
-        blurb: "When Stripe billing is enabled, subscriptions can raise limits and show manage-billing in the app.",
-        bullets: ["Requires checkout to be configured on the API", "Not legal advice or a regulated service by itself"],
+        price: "₹49 / month",
+        priceSub: "or ₹399 / year when checkout is available · cancel anytime in Stripe",
+        blurb: "For people and small teams who use NyayaSetu often: the highest standard daily request pool, optional deeper legal-style context when the app offers it, and manage or cancel your plan in-app as soon as paid billing is live.",
+        bullets: [
+          "Top daily request allowance in this app version",
+          "Priority access to new Pro features as we release them",
+        ],
+        cta: "Upgrade in the app",
+        highlight: false,
+        badge: "For power users",
+      },
+    ],
+    compareRows: [
+      {
+        label: "Chat, drafting & file help",
+        guest: "Full experience",
+        signed: "Full experience",
+        pro: "Full experience",
+      },
+      {
+        label: "How much you can use per day",
+        guest: "Entry",
+        signed: "7-day trial → free account ₹1/day (10 requests/day cap)",
+        pro: "Highest (Pro)",
+      },
+      {
+        label: "Account",
+        guest: "Not required to start",
+        signed: "Free account",
+        pro: "Pro subscription (when you upgrade)",
+      },
+      {
+        label: "Self-serve billing (manage plan)",
+        guest: "—",
+        signed: "—",
+        pro: "In the app when Stripe is on",
+      },
+      {
+        label: "Deeper / lawyer-style mode",
+        guest: "—",
+        signed: "If available in app",
+        pro: "Unlocked (where this app uses Pro for it)",
       },
     ],
     openApp: "Open app",
@@ -276,16 +403,25 @@ const EN: MarketingBundle = {
     rag: "RAG backend",
     stripeCheckout: "Stripe checkout ready",
     stripePortal: "Stripe portal ready",
+    signupOfferLabel: "Sign-in offer (trial → base)",
   },
 };
 
 const HI: MarketingBundle = {
   ...EN,
   locale: "hi",
+  landing: {
+    headline: "बातचीत से शुरू — कानूनी स्पष्टता",
+    subline: "सादी भाषा में मार्गदर्शन व मसौदा। वकालत संस्थान नहीं।",
+    openChat: "चैट खोलें",
+    seePricing: "नीचे कीमत व सीमाएँ",
+    legalNote: "शिक्षण सहायता — कानूनी सलाह नहीं।",
+  },
   nav: [
+    { path: "/", label: "होम" },
     { path: "/features", label: "विशेषताएँ" },
     { path: "/how-it-works", label: "यह कैसे काम करता है" },
-    { path: "/pricing", label: "मूल्य निर्धारण" },
+    { path: "/#pricing", label: "मूल्य निर्धारण" },
     { path: "/faq", label: "सामान्य प्रश्न" },
     { path: "/about", label: "हमारे बारे में" },
     { path: "/blog", label: "ब्लॉग" },
@@ -293,6 +429,7 @@ const HI: MarketingBundle = {
   ],
   chrome: {
     ...EN.chrome,
+    home: "होम",
     signIn: "साइन इन",
     openApp: "ऐप खोलें",
     menu: "मेनू",
@@ -385,28 +522,77 @@ const HI: MarketingBundle = {
     },
   ],
   pricingNotes: {
+    kicker: "मुफ्त शुरू · बिना रुकावट",
+    title: "अधिक भारतीयों तक कानूनी स्पष्टता—शुरू ₹0 से",
     intro:
-      "प्रत्येक डिप्लॉयमेंट अपनी सीमाएँ और बिलिंग सेट कर सकता है। नीचे सामान्य तस्वीर; साइन इन के बाद ऐप में वास्तविक सीमाएँ देखें।",
-    title: "मूल्य निर्धारण",
+      "पहले हम चाहते हैं कि आप सहज महसूस करें: तुरंत सहायक आज़माएँ, मुफ्त खाते से बड़ी दैनिक सीमा पाएँ, और ज़रूरत पड़ने पर Pro। पहले महीनों में हम पहुँच व प्रतिक्रिया पर ज़ोर दे रहे हैं—उत्पाद बेहतर बनाने में मदद करें और संरचित मार्गदर्शन, मसौदा व अगले कदम पाएँ। इस ऐप के आंकड़े पेज के नीचे हमेशा साफ दिखते हैं।",
+    heroPills: [
+      "आज़माएँ बिना भुगतान",
+      "कभी भी मुफ्त खाता",
+      "भारी इस्तेमाल व टीमों के लिए Pro",
+    ],
+    sectionLive: "आज यह ऐप आपको क्या देता है",
+    sectionLiveSub:
+      "सीमाएँ सर्वर से ताज़ा होती हैं—पूरी साइन-इन सीमा पाने के लिए साइन इन करें। अगर बिलिंग अभी चालू नहीं तो मुफ्त स्तर मुफ्त ही रहेंगे; चेकआउट जुड़ते ही Pro ऐप में दिखेगा।",
+    livePanelTitle: "इस साइट पर अभी आपकी सीमाएँ",
+    liveSectionFootnote:
+      "RAG, बिलिंग व पेवॉल नीचे दिखते हैं कि आज यह डिप्लॉयमेंट कैसा चल रहा है—रोडमैप पर बाधा नहीं, बस पारदोषिता।",
+    sectionPlans: "कैसे शुरू करें—चुनें",
+    sectionPlansSub:
+      "हर मार्ग पर वही मुख्य सहायक: मुद्दा समझना, मार्गदर्शन, ज़रूरत अनुसार मसौदा। अंतर सिर्फ दैनिक सीमा है और अगर ज़रूरत हो तो Pro—ऊँची सीमा व अतिरिक्त गहराई।",
+    sectionCompare: "तुलना एक नज़र में",
+    compareSub:
+      "Pro सबसे ऊँचा दैनिक पूल व वैकल्पिक गहरी (जैसे वकील-शैली) सहायता देता है जहाँ ऐप उपलब्ध कराए। मुफ्त मार्ग हम जानबूझकर उदार रखते हैं ताकि अधिक लोग आज़माएँ व हम उत्पाद सुधारें।",
+    compareColFeature: "लाभ",
     tiers: [
       {
-        name: "अतिथि",
-        price: "मुफ़्त",
-        blurb: "सीमित दैनिक अनुरोध बजट के साथ सहायक आज़माएँ।",
-        bullets: ["कई डिप्लॉयमेंट पर खाता ज़रूरी नहीं", "एक बार के प्रश्नों के लिए उपयुक्त"],
+        name: "पहले आज़माएँ",
+        price: "₹0",
+        priceSub: "अतिथि — इस साइट पर कई लोगों के लिए साइन-अप नहीं",
+        blurb: "सहायक कैसा अनुभव देता है, देखें: सरल प्रश्न, स्ट्रीम जवाब, छोटी दैनिक सीमा। त्वरित जाँच के लिए ठीक, फिर मुफ्त खाता बनाएँ।",
+        bullets: ["कई आगंतुकों के लिए साइन-अप के बिना चैट", "आरंभिक इस्तेमाल के लिए भुगतान विवरण नहीं"],
+        cta: "ऐप खोलें",
+        highlight: false,
       },
       {
-        name: "साइन इन",
-        price: "मुफ़्त",
-        blurb: "प्रमाणीकरण पर अधिक दैनिक सीमाएँ (जैसे Clerk)।",
-        bullets: ["उपयोग उपयोगकर्ता आईडी से ट्रैक", "सक्षम होने पर डैशबोर्ड या सहेजे केस"],
+        name: "मुफ्त खाता",
+        price: "₹1/दिन",
+        priceSub: "ट्रायल के बाद मुफ्त खाता — प्रति दिन ₹1 · अधिकतम 10 अनुरोध/दिन (UTC) · ट्रायल मुफ़्त · बिलिंग चालू होने पर भुगतान",
+        blurb:
+          "नए साइन-इन को 7 दिन का ट्रायल मिलता है जिसमें प्रतिदिन अधिक अनुरोध। उसके बाद मुफ्त खाते पर प्रति दिन ₹1, अधिकतम 10 अनुरोध प्रति UTC दिन (पारदर्शिता; Stripe चालू होने पर चेकआउट)। बिलिंग बंद रहने तक अप्रत्याशित शुल्क नहीं।",
+        bullets: [
+          "अतिथि की तुलना में 7 दिन ट्रायल में ऊँची दैनिक सीमा",
+          "फिर मुफ्त खाता: ₹1/दिन · अधिकतम 10 अनुरोध/दिन (UTC)",
+        ],
+        cta: "मुफ्त खाता बनाएँ",
+        highlight: true,
+        badge: "ऑनबोर्डिंग के लिए सबसे अच्छा",
       },
       {
         name: "Pro",
-        price: "डिप्लॉयमेंट अनुसार",
-        blurb: "Stripe सक्षम होने पर सदस्यता सीमाएँ बढ़ा सकती है और ऐप में बिलिंग प्रबंधन।",
-        bullets: ["API पर चेकआउट कॉन्फ़िगर होना चाहिए", "कानूनी सलाह या विनियमित सेवा नहीं"],
+        price: "₹49 / माह",
+        priceSub: "या ₹399 / वर्ष जब चेकआउट मिले · Stripe में कभी भी रद्द",
+        blurb: "जो अक्सर इस्तेमाल करें: सबसे ऊँचा मानक दैनिक पूल, ऐप जहाँ दे वैकल्पिक कानूनी-शैली गहराई, व भुगतान चालू होते ही ऐप में प्लान प्रबंधन।",
+        bullets: [
+          "इस ऐप संस्करण में शीर्ष दैनिक सीमा",
+          "नए Pro फ़ीचरों तक प्राथमिक पहुँच",
+        ],
+        cta: "ऐप में अपग्रेड",
+        highlight: false,
+        badge: "पावर यूज़र्स",
       },
+    ],
+    compareRows: [
+      { label: "चैट, मसौदा, फ़ाइल मदद", guest: "पूर्ण", signed: "पूर्ण", pro: "पूर्ण" },
+      {
+        label: "प्रतिदिन कितना प्रयोग",
+        guest: "प्रवेश",
+        signed: "7 दिन ट्रायल → मुफ्त खाता ₹1/दिन (10 अनुरोध/दिन तक)",
+        pro: "सबसे ऊँचा (Pro)",
+      },
+      { label: "खाता", guest: "शुरू के लिए ज़रूरी नहीं", signed: "मुफ्त खाता", pro: "Pro (अपग्रेड पर)" },
+      { label: "प्लान खुद प्रबंधन", guest: "—", signed: "—", pro: "जब ऐप में Stripe हो" },
+      { label: "वकील / पेशेवर स्टाइल मोड", guest: "—", signed: "ऐप में मिले तो", pro: "खुला (जहाँ Pro ज़रूरी)" },
     ],
     openApp: "ऐप खोलें",
   },
@@ -469,6 +655,7 @@ const HI: MarketingBundle = {
     rag: "RAG बैकएंड",
     stripeCheckout: "Stripe चेकआउट तैयार",
     stripePortal: "Stripe पोर्टल तैयार",
+    signupOfferLabel: "साइन-इन ऑफ़र (ट्रायल → आधार)",
   },
 };
 

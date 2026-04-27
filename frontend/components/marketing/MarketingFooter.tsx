@@ -9,13 +9,17 @@ export function MarketingFooter({ locale }: { locale: MarketingLocale }) {
       <div className="mx-auto max-w-6xl px-4 py-12 sm:px-6">
         <div className="grid gap-10 sm:grid-cols-2 lg:grid-cols-4">
           <div>
-            <div className="flex items-start gap-3">
-              <NyayaSetuLogo className="h-10 w-10 shrink-0" aria-hidden />
+            <Link
+              href={mpath(locale, "/")}
+              className="group flex items-start gap-3 rounded-lg outline-offset-4 focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-700/70"
+              aria-label={`NyayaSetu — ${b.chrome.home}`}
+            >
+              <NyayaSetuLogo className="h-10 w-10 shrink-0 transition group-hover:opacity-90" aria-hidden />
               <div className="min-w-0">
-                <NyayaWordmark className="text-base" />
+                <NyayaWordmark className="text-base group-hover:text-amber-950" />
                 <p className="mt-1 text-sm font-medium text-stone-600">{b.brandTagline}</p>
               </div>
-            </div>
+            </Link>
             <p className="mt-4 text-sm leading-relaxed text-stone-600">{b.disclaimerShort}</p>
           </div>
           <div>

@@ -405,6 +405,34 @@ def stream_phase_preparing(lang: str | None) -> str:
     return "Preparing your legal guidance and draft…"
 
 
+def stream_phase_preparing_for_task(lang: str | None, task_type: str | None) -> str:
+    """
+    Shown in SSE right before the main model call, aligned with request `task_type`
+    (P2-4) so the stream reflects Q&A, hybrid, or consumer-filing mode.
+    """
+    tt = (task_type or "draft_letter").strip().lower()
+    rl = normalize_response_lang(lang)
+    if tt == "qa_only":
+        if rl == "hi":
+            return "निर्देश: पहले सीधा उत्तर, फिर चिह्नित परिशिष्ट — तैयारी…"
+        if rl == "hi_latn":
+            return "Nirdesh: pehle seedha uttar, phir sanketit parishisht — taiyari…"
+        return "Q&A first: building a direct answer, then a short annex…"
+    if tt == "draft_with_qa":
+        if rl == "hi":
+            return "छोटा उत्तर, फिर पूर्ण पत्र-मसौदा — तैयारी…"
+        if rl == "hi_latn":
+            return "Chhota uttar, phir purna patr-masauda — taiyari…"
+        return "Preparing a short direct answer, then a full letter draft…"
+    if tt == "consumer_complaint_filing":
+        if rl == "hi":
+            return "उपभोक्ता मंच-अनुरूप शिकायत-प्रारूप (जहाँ लागू) — तैयारी…"
+        if rl == "hi_latn":
+            return "Upbhokta manch ke anuroop shikayat-prarup (jahaan lagu) — taiyari…"
+        return "Preparing a consumer-forum style complaint (where it applies)…"
+    return stream_phase_preparing(lang)
+
+
 def stream_phase_clarification_banner(
     lang: str | None, *, optional: bool, has_agent_q: bool, multi_q: bool
 ) -> str:

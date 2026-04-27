@@ -7,7 +7,9 @@ import {
   createDashboardCase,
   deleteDashboardCase,
   fetchDashboardCases,
+  fetchResponseFeedbackSummary,
   type DashboardCase,
+  type ResponseFeedbackSummary,
 } from "@/services/api";
 import { formatApiThrowable } from "@/lib/apiErrorMessages";
 import {
@@ -28,6 +30,30 @@ function labelFromSavedAuthority(
   return typeof st === "string" ? authorityStatusLabel(locale, st) : null;
 }
 
+function shortDayLabel(isoDay: string): string {
+  try {
+    const d = new Date(`${isoDay}T00:00:00Z`);
+    if (Number.isNaN(d.getTime())) return isoDay.slice(5);
+    return d.toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" });
+  } catch {
+    return isoDay.slice(5);
+  }
+}
+
+function feedbackBarTooltip(
+  locale: AppLocale,
+  day: string,
+  positive: number,
+  total: number,
+): string {
+  const pct = total > 0 ? (positive / total) * 100 : 0;
+  const dayLabel = shortDayLabel(day);
+  if (locale === "hi") {
+    return `${dayLabel}: ${positive}/${total} उपयोगी (${pct.toFixed(1)}%)`;
+  }
+  return `${dayLabel}: ${positive}/${total} helpful (${pct.toFixed(1)}%)`;
+}
+
 /**
  * P8-01 — signed-in dashboard with saved cases (`GET|POST|DELETE /dashboard/cases`).
  * Product notes: `docs/P8_DASHBOARD_SPEC.md`
@@ -43,6 +69,16 @@ export default function LawyerDashboardPage() {
   const [saveBusy, setSaveBusy] = useState(false);
   const [saveErr, setSaveErr] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [feedbackSummary, setFeedbackSummary] = useState<ResponseFeedbackSummary | null>(null);
+  const [feedbackLoading, setFeedbackLoading] = useState(false);
+  const [feedbackErr, setFeedbackErr] = useState<string | null>(null);
+  const [feedbackDays, setFeedbackDays] = useState<7 | 30>(7);
+
+  const analyticsAllowlist = (process.env.NEXT_PUBLIC_FEEDBACK_ANALYTICS_USERS || "")
+    .split(",")
+    .map((x) => x.trim())
+    .filter(Boolean);
+  const canViewFeedbackAnalytics = Boolean(userId && analyticsAllowlist.includes(userId));
 
   useEffect(() => {
     setLocale(getStoredLocale());
@@ -71,6 +107,29 @@ export default function LawyerDashboardPage() {
     if (!isLoaded || !isSignedIn || !userId) return;
     void refresh();
   }, [isLoaded, isSignedIn, userId, refresh]);
+
+  useEffect(() => {
+    if (!isLoaded || !isSignedIn || !canViewFeedbackAnalytics) return;
+    let cancelled = false;
+    setFeedbackLoading(true);
+    setFeedbackErr(null);
+    void fetchResponseFeedbackSummary(feedbackDays)
+      .then((sum) => {
+        if (cancelled) return;
+        setFeedbackSummary(sum);
+        if (!sum) setFeedbackErr("Could not load feedback summary.");
+      })
+      .catch((e) => {
+        if (cancelled) return;
+        setFeedbackErr(formatApiThrowable(locale, e));
+      })
+      .finally(() => {
+        if (!cancelled) setFeedbackLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isLoaded, isSignedIn, canViewFeedbackAnalytics, locale, feedbackDays]);
 
   async function onSave(e: React.FormEvent) {
     e.preventDefault();
@@ -211,6 +270,137 @@ export default function LawyerDashboardPage() {
             })}
           </ul>
         </section>
+
+        {canViewFeedbackAnalytics ? (
+          <section className="rounded-2xl border border-indigo-200/70 bg-indigo-50/40 p-6 shadow-sm">
+            <div className="flex items-baseline justify-between gap-2">
+              <h2 className="text-sm font-semibold text-indigo-950">{t(locale, "dashboardFeedbackTitle")}</h2>
+              <div className="flex items-center gap-2">
+                <div className="inline-flex rounded-md border border-indigo-200 bg-white p-0.5">
+                  <button
+                    type="button"
+                    onClick={() => setFeedbackDays(7)}
+                    className={`rounded px-2 py-1 text-xs font-semibold ${
+                      feedbackDays === 7 ? "bg-indigo-700 text-white" : "text-indigo-900 hover:bg-indigo-50"
+                    }`}
+                  >
+                    7d
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setFeedbackDays(30)}
+                    className={`rounded px-2 py-1 text-xs font-semibold ${
+                      feedbackDays === 30 ? "bg-indigo-700 text-white" : "text-indigo-900 hover:bg-indigo-50"
+                    }`}
+                  >
+                    30d
+                  </button>
+                </div>
+                <span className="text-xs text-indigo-800/80">
+                  {(t(locale, "dashboardFeedbackWindow") as (days: number) => string)(feedbackDays)}
+                </span>
+              </div>
+            </div>
+            <p className="mt-1 text-sm leading-relaxed text-indigo-900/85">{t(locale, "dashboardFeedbackIntro")}</p>
+            {feedbackErr ? (
+              <p className="mt-3 text-sm text-red-800" role="alert">
+                {feedbackErr}
+              </p>
+            ) : null}
+            {feedbackLoading ? <p className="mt-3 text-xs text-indigo-800/70">{t(locale, "working")}</p> : null}
+            {feedbackSummary ? (
+              <div className="mt-4 space-y-4">
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <div className="rounded-lg border border-indigo-200/80 bg-white/90 px-3 py-2">
+                    <p className="text-xs text-indigo-800/75">{t(locale, "dashboardFeedbackTotal")}</p>
+                    <p className="mt-1 text-lg font-semibold text-indigo-950">{feedbackSummary.total}</p>
+                  </div>
+                  <div className="rounded-lg border border-indigo-200/80 bg-white/90 px-3 py-2">
+                    <p className="text-xs text-indigo-800/75">{t(locale, "dashboardFeedbackPositive")}</p>
+                    <p className="mt-1 text-lg font-semibold text-indigo-950">{feedbackSummary.positive}</p>
+                  </div>
+                  <div className="rounded-lg border border-indigo-200/80 bg-white/90 px-3 py-2">
+                    <p className="text-xs text-indigo-800/75">{t(locale, "dashboardFeedbackPositiveRate")}</p>
+                    <p className="mt-1 text-lg font-semibold text-indigo-950">
+                      {(feedbackSummary.positive_rate * 100).toFixed(1)}%
+                    </p>
+                  </div>
+                </div>
+                <div className="rounded-lg border border-indigo-200/80 bg-white/90 px-3 py-3">
+                  <p className="text-xs font-semibold text-indigo-900">{t(locale, "dashboardFeedbackTrend")}</p>
+                  <div className="mt-2 overflow-x-auto pb-1">
+                    <div className="flex min-w-[300px] items-end gap-1.5">
+                    {feedbackSummary.by_day.slice(-feedbackDays).map((d) => {
+                      const ratio = d.total > 0 ? d.positive / d.total : 0;
+                      const h = 18 + Math.round(ratio * 34);
+                      const tip = feedbackBarTooltip(locale, d.day, d.positive, d.total);
+                      return (
+                        <div key={d.day} className="flex min-w-0 flex-1 flex-col items-center gap-1">
+                          <div
+                            className={`w-full rounded-t ${
+                              d.total === 0 ? "bg-stone-200" : ratio >= 0.75 ? "bg-emerald-500" : ratio >= 0.5 ? "bg-amber-500" : "bg-rose-500"
+                            }`}
+                            style={{ height: `${h}px` }}
+                            title={tip}
+                            aria-label={tip}
+                          />
+                          <span className="truncate text-[10px] text-indigo-800/80">{shortDayLabel(d.day)}</span>
+                        </div>
+                      );
+                    })}
+                    </div>
+                  </div>
+                  <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-indigo-900/80">
+                    <span className="inline-flex items-center gap-1.5">
+                      <span className="h-2 w-2 rounded-full bg-emerald-500" aria-hidden />
+                      {t(locale, "dashboardFeedbackLegendHigh")}
+                    </span>
+                    <span className="inline-flex items-center gap-1.5">
+                      <span className="h-2 w-2 rounded-full bg-amber-500" aria-hidden />
+                      {t(locale, "dashboardFeedbackLegendMid")}
+                    </span>
+                    <span className="inline-flex items-center gap-1.5">
+                      <span className="h-2 w-2 rounded-full bg-rose-500" aria-hidden />
+                      {t(locale, "dashboardFeedbackLegendLow")}
+                    </span>
+                    <span className="inline-flex items-center gap-1.5">
+                      <span className="h-2 w-2 rounded-full bg-stone-200" aria-hidden />
+                      {t(locale, "dashboardFeedbackLegendNoData")}
+                    </span>
+                  </div>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="rounded-lg border border-indigo-200/80 bg-white/90 px-3 py-3">
+                    <p className="text-xs font-semibold text-indigo-900">{t(locale, "dashboardFeedbackByMode")}</p>
+                    <ul className="mt-2 space-y-1.5 text-sm text-indigo-950">
+                      {feedbackSummary.by_mode.map((m) => (
+                        <li key={m.client_mode} className="flex items-center justify-between gap-2">
+                          <span>{m.client_mode}</span>
+                          <span className="text-indigo-900/80">
+                            {m.positive}/{m.total}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                  <div className="rounded-lg border border-indigo-200/80 bg-white/90 px-3 py-3">
+                    <p className="text-xs font-semibold text-indigo-900">{t(locale, "dashboardFeedbackByTask")}</p>
+                    <ul className="mt-2 space-y-1.5 text-sm text-indigo-950">
+                      {feedbackSummary.by_task_type.map((m) => (
+                        <li key={m.task_type} className="flex items-center justify-between gap-2">
+                          <span className="truncate">{m.task_type}</span>
+                          <span className="text-indigo-900/80">
+                            {m.positive}/{m.total}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+          </section>
+        ) : null}
 
         <Link
           href="/chat"

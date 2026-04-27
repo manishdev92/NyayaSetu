@@ -28,7 +28,7 @@ const M = {
     brandTagline: "Legal clarity for India",
     heroTitle: "AI Legal Companion",
     heroSubtitle:
-      "Use the chat to describe your issue. We stream progress like a conversational assistant and ask clarifying questions when routing is uncertain (for example lost vs stolen property), so we do not assign the wrong authority. Add your details below for the letter and local office matching. This is educational support, not a substitute for a qualified lawyer.",
+      "Start in the chat to describe your issue. We stream progress like a conversational assistant and ask clarifying questions when routing is uncertain (for example lost vs stolen property), so we do not assign the wrong authority. When you want your name and address on a letterhead, add them in the optional section below. This is educational support, not a substitute for a qualified lawyer.",
     signIn: "Sign in",
     signedInAs: "Signed in as",
     proTitle: "NyayaSetu Pro (preview)",
@@ -49,6 +49,9 @@ const M = {
       "You get the higher daily request budget shown in your usage line. Manage or cancel billing in your Stripe customer portal (from the email receipt or Stripe Dashboard).",
     proDailyCapHint: (n: number) =>
       `While Pro is active, your daily cap from the API is up to ${n} requests (UTC calendar day).`,
+    trialBannerTitle: "Free trial active",
+    trialBannerBody: (endDate: string, trialDaily: number, baseDaily: number, baseInr: number) =>
+      `Higher daily allowance until ${endDate} (UTC). Current cap: ${trialDaily} requests per UTC day. After the trial: free account ₹${baseInr}/day for up to ${baseDaily} requests per UTC day when billing is enabled.`,
     billingNotStripeMode: "Billing is not in Stripe mode on the server.",
     stripeCheckoutNotConfigured: "Stripe Checkout is not configured on the server.",
     stripeUpstreamError: "Stripe returned an error. Try again or check API logs.",
@@ -72,6 +75,19 @@ const M = {
     dashboardUpdated: "Updated",
     dashboardBackHome: "Back to home",
     dashboardLoading: "Loading…",
+    dashboardFeedbackTitle: "Response feedback (internal)",
+    dashboardFeedbackIntro: "Rolling helpfulness from thumbs feedback submitted in chat.",
+    dashboardFeedbackWindow: (days: number) => `Last ${days} days`,
+    dashboardFeedbackTotal: "Total responses rated",
+    dashboardFeedbackPositive: "Helpful responses",
+    dashboardFeedbackPositiveRate: "Helpful rate",
+    dashboardFeedbackTrend: "Trend",
+    dashboardFeedbackLegendHigh: "High helpfulness",
+    dashboardFeedbackLegendMid: "Medium helpfulness",
+    dashboardFeedbackLegendLow: "Low helpfulness",
+    dashboardFeedbackLegendNoData: "No feedback",
+    dashboardFeedbackByMode: "By mode",
+    dashboardFeedbackByTask: "By task type",
     authorityDisclaimerDefault:
       "Please verify all details on official government websites before visiting or taking action. NyayaSetu does not guarantee external data accuracy.",
     stripePortalNotConfigured: "Stripe Customer Portal is not configured on the server (missing STRIPE_SECRET_KEY).",
@@ -83,6 +99,16 @@ const M = {
     requestBudget: "Request budget:",
     requestBudgetLine: (r: number, l: number, reset: string) =>
       `${r} of ${l} left for today (UTC). Resets after ${reset}. Sign in for a higher daily limit.`,
+    quickSummaryTitle: "Quick summary",
+    verifyBeforeAction:
+      "Before taking action, verify key facts, authority, and legal references on official government or court sources.",
+    modeBadgeLabel: "Mode",
+    modeCitizen: "Citizen",
+    modeLawyer: "Lawyer",
+    helpfulPrompt: "Was this response helpful?",
+    helpfulYes: "Yes",
+    helpfulNo: "No",
+    helpfulThanks: "Thanks for your feedback.",
     yourDetails: "Your details (optional)",
     fullName: "Full name",
     fullNamePh: "Optional — appears in the letter if provided",
@@ -140,6 +166,15 @@ const M = {
       "No licensed case-law results for this query yet. Statute and curated references above still apply. Connect a vetted case-law source in deployment when available.",
     caseLawNote:
       "Research panel for lawyer mode only. Citations are informational; verify on official court portals or a licensed database.",
+    caseLawQuickSummaryLabel: "Quick summary",
+    caseLawRelStrong: "Strong match",
+    caseLawRelPossible: "Possible match",
+    caseLawRelLow: "Low match",
+    caseLawWhyRelatedLabel: "Why related",
+    caseLawVerifyOfficialLabel: "Cross-check on official database",
+    caseLawOpenEcourts: "Open eCourts Judgments",
+    caseLawFallbackHint:
+      "Could not find strongly related case-law snippets for this query. Showing the closest available references for manual review.",
     refSummary: "References (summary)",
     immSafety: "Immediate safety & helplines",
     keyHelplines: "Key helplines & emergency numbers",
@@ -162,9 +197,16 @@ const M = {
     verifiedListing: "VERIFIED LISTING",
     nextH2: "Next steps",
     chatH2: "Chat",
+    /** Short label for the chat panel (accessibility / optional heading). */
+    chatSectionAria: "Legal help chat",
+    chatNewThread: "New conversation",
+    /**
+     * Legacy long intro; kept for docs/tests. The live UI uses a one-line `chatEmptyHint` instead
+     * of multiple paragraphs.
+     */
     chatIntro:
-      "Messages stream as we analyze your issue. If something is ambiguous, we ask before generating a full draft or assigning an authority.",
-    clientModeLabel: "Using NyayaSetu as",
+      "Describe your issue. NyayaSetu classifies the matter and streams guidance and drafts. If a routing detail is missing, it will ask first.",
+    clientModeLabel: "Mode",
     clientModeCitizen: "General user",
     clientModeLawyer: "Lawyer / legal professional",
     clientModeHint:
@@ -183,7 +225,24 @@ const M = {
     filingForumCaption: "Suggested forum caption",
     filingPrayer: "Prayer / relief checklist",
     filingAnnexures: "Annexure checklist",
-    emptyChat: "Describe your issue below to begin.",
+    emptyChat: "Type your issue in the message box. No need to pick a category; we match it to the right format as you go.",
+    /** Single muted line in an empty thread (replaces a large welcome block). */
+    chatEmptyHint: "Replies appear here. Write your issue in the box below.",
+    optionalDetailsToggle: "Optional: your name, phone, and address for letterheads",
+    chatWelcomeTitle: "Start with your issue",
+    chatWelcomeSub: "The chat below is the main place. We will classify the matter and shape the response.",
+    uiInfoTooltipAria: "More about this option",
+    chatChipLetter: "Letter or application",
+    chatChipQa: "Legal Q&A first",
+    chatChipConsumer: "Consumer complaint",
+    chatChipGuidance: "Guidance, then full draft",
+    chatChipOwn: "I’ll type my own",
+    chatTemplateLetter: "I need a formal legal letter or application. The situation: ",
+    chatTemplateQa:
+      "I have a legal question. Please give a direct answer first, with brief next steps if useful. My question: ",
+    chatTemplateConsumer: "I want to prepare a consumer complaint. The facts: ",
+    chatTemplateGuidance:
+      "I want a short explanation and then a full letter or application. The topic: ",
     streamDone: "Here is your structured guidance and draft below (you can scroll to the letter section).",
     optionalChips: "Optional: help us refine your case — you can answer the chips below, type in the box, or skip.",
     sendAnswers: "Send answers",
@@ -191,11 +250,12 @@ const M = {
     answerBelow: "Answer in the box below in one message, then send.",
     structReply: "Send structured reply",
     yourMessage: "Your message",
-    msgPlaceholder:
-      'e.g. "My wallet is missing" — then pick Lost or Stolen if asked. You can also attach a PDF or .txt.',
+    composerSendShortcutHint: "Enter to send. Shift+Enter for a new line.",
+    msgPlaceholder: "Describe your issue in plain language. You can attach a PDF, text, or an image.",
+    composerHeroTitle: "What legal issue can we help with?",
+    composerHeroSub: "Start typing below in everyday language—you can attach a document or use voice after your first line.",
     attachSizeHint: (mb: string) => `Max attachment: ${mb} MB (text-based PDF, .txt, or .md).`,
-    attachOcrHint:
-      "The API has image OCR enabled — photos of notices or forms may be transcribed automatically; verify anything legally critical.",
+    attachOcrHint: "OCR is on for images — double-check anything legally critical.",
     ingestFileTooLarge: (mb: string) =>
       `This file is over the server limit of ${mb} MB. Use a smaller file, or paste the text instead.`,
     ingestNoOcr:
@@ -216,7 +276,7 @@ const M = {
     voiceRecording: "Recording… tap Stop when finished",
     voiceTranscribing: "Transcribing speech…",
     voiceHint:
-      "Record a short description of your issue; text appears in the box — edit if needed, then press Send. Uses the same daily request budget as sending a message.",
+      "Record a short description of your issue; text appears in the box — edit if needed, then send (Enter). Uses the same daily request budget as sending a message.",
     voiceNotSupported:
       "Voice recording is not supported in this browser. Try Chrome or Edge on desktop, or type your issue.",
     voiceMicDenied: "Microphone permission was denied. Allow the mic for this site in browser settings.",
@@ -280,7 +340,7 @@ const M = {
     brandTagline: "भारत के लिए कानूनी स्पष्टता",
     heroTitle: "AI कानूनी साथी",
     heroSubtitle:
-      "चैट में अपनी समस्या बताएँ। हम सहायक जैसे बातचीत में प्रगति दिखाते हैं और जब रूटिंग अनिश्चित हो (जैसे खो बनाम चोरी) तो स्पष्ट करने वाले प्रश्न पूछते हैं, ताकि गलत प्राधिकारी तय न हों। पत्र व स्थानीय दफ़्तर मिलान के लिए नीचे अपने विवरण जोड़ें। यह शैक्षणिक सहयोग है, योग्य वकील के बदले नहीं।",
+      "पहले चैट में अपनी समस्या बताएँ। हम सहायक जैसे बातचीत में प्रगति दिखाते हैं और जब रूटिंग अनिश्चित हो (जैसे खो बनाम चोरी) तो स्पष्ट करने वाले प्रश्न पूछते हैं, ताकि गलत प्राधिकारी तय न हों। पत्र-पेटी व स्थानीय मिलान के लिए नाम-पता तब जोड़ें जब चाहें—नीचे वैकल्पिक खण्ड में। यह शैक्षणिक सहयोग है, योग्य वकील के बदले नहीं।",
     signIn: "साइन इन",
     signedInAs: "इनके रूप में",
     proTitle: "NyayaSetu Pro (पूर्वावलोकन)",
@@ -298,6 +358,9 @@ const M = {
       "आपको उपयोग पंक्ति में दिखने वाली उच्च दैनिक सीमा मिलती है। Stripe ग्राहक पोर्टल से बिलिंग प्रबंधित करें (ईमेल रसीद या Stripe डैशबोर्ड)।",
     proDailyCapHint: (n: number) =>
       `Pro सक्रिय रहते API से दैनिक अधिकतम ${n} अनुरोध (UTC दिन)।`,
+    trialBannerTitle: "मुफ़्त ट्रायल चालू",
+    trialBannerBody: (endDate: string, trialDaily: number, baseDaily: number, baseInr: number) =>
+      `${endDate} (UTC) तक अधिक दैनिक सीमा। अभी की सीमा: प्रति UTC दिन ${trialDaily} अनुरोध। ट्रायल के बाद: मुफ्त खाता प्रति दिन ₹${baseInr}, अधिकतम ${baseDaily} अनुरोध प्रति UTC दिन जब बिलिंग चालू हो।`,
     billingNotStripeMode: "सर्वर पर बिलिंग Stripe मोड में नहीं।",
     stripeCheckoutNotConfigured: "सर्वर पर Stripe चेकआउट कॉन्फ़िगर नहीं।",
     stripeUpstreamError: "Stripe त्रुटि। दोबारा या लॉग देखें।",
@@ -321,6 +384,19 @@ const M = {
     dashboardUpdated: "अपडेट",
     dashboardBackHome: "होम पर वापस",
     dashboardLoading: "लोड हो रहा है…",
+    dashboardFeedbackTitle: "जवाब फीडबैक (आंतरिक)",
+    dashboardFeedbackIntro: "चैट में दिए गए थम्ब्स फीडबैक से रोलिंग उपयोगिता सारांश।",
+    dashboardFeedbackWindow: (days: number) => `पिछले ${days} दिन`,
+    dashboardFeedbackTotal: "रेट किए गए कुल जवाब",
+    dashboardFeedbackPositive: "उपयोगी जवाब",
+    dashboardFeedbackPositiveRate: "उपयोगी दर",
+    dashboardFeedbackTrend: "रुझान",
+    dashboardFeedbackLegendHigh: "उच्च उपयोगिता",
+    dashboardFeedbackLegendMid: "मध्यम उपयोगिता",
+    dashboardFeedbackLegendLow: "कम उपयोगिता",
+    dashboardFeedbackLegendNoData: "कोई फीडबैक नहीं",
+    dashboardFeedbackByMode: "मोड के अनुसार",
+    dashboardFeedbackByTask: "टास्क प्रकार के अनुसार",
     authorityDisclaimerDefault:
       "जाने या कार्रवाई से पहले सभी विवरण आधिकारिक सरकारी वेबसाइटों पर सत्यापित करें। NyayaSetu बाहरी डेटा की सटीकता की गारंटी नहीं देता।",
     stripePortalNotConfigured: "सर्वर पर Stripe Customer Portal तैयार नहीं (STRIPE_SECRET_KEY)।",
@@ -332,6 +408,16 @@ const M = {
     requestBudget: "अनुरोध सीमा:",
     requestBudgetLine: (r: number, l: number, reset: string) =>
       `आज (UTC) ${l} में से ${r} बचे; ${reset} के बाद रीसेट। उच्च दैनिक सीमा के लिए साइन इन करें।`,
+    quickSummaryTitle: "त्वरित सार",
+    verifyBeforeAction:
+      "कोई कार्रवाई करने से पहले मुख्य तथ्य, प्राधिकरण और कानूनी संदर्भ आधिकारिक सरकारी/अदालत स्रोतों पर सत्यापित करें।",
+    modeBadgeLabel: "मोड",
+    modeCitizen: "सामान्य उपयोगकर्ता",
+    modeLawyer: "वकील",
+    helpfulPrompt: "क्या यह जवाब उपयोगी था?",
+    helpfulYes: "हाँ",
+    helpfulNo: "नहीं",
+    helpfulThanks: "आपके फीडबैक के लिए धन्यवाद।",
     yourDetails: "आपके विवरण (वैकल्पिक)",
     fullName: "पूरा नाम",
     fullNamePh: "वैकल्पिक — पत्र में अगर दें तो",
@@ -387,6 +473,15 @@ const M = {
       "इस प्रश्न हेतु अभी कोई लाइसेंस प्राप्त केस-कानून परिणाम नहीं। ऊपर संहिता/क्यूरेटेड संदर्भ पहले लागू। उपलब्ध होने पर तैनाती में स्रोत जोड़ा जा सकता है।",
     caseLawNote:
       "केवल वकील मोड — प्रदर्शन सूचनात्मक; आधिकारिक पोर्टल या लाइसेंस डेटाबेस पर सत्यापित करें।",
+    caseLawQuickSummaryLabel: "त्वरित सार",
+    caseLawRelStrong: "मजबूत मेल",
+    caseLawRelPossible: "संभावित मेल",
+    caseLawRelLow: "कम मेल",
+    caseLawWhyRelatedLabel: "यह क्यों संबंधित है",
+    caseLawVerifyOfficialLabel: "आधिकारिक डेटाबेस पर क्रॉस-चेक करें",
+    caseLawOpenEcourts: "eCourts निर्णय पोर्टल खोलें",
+    caseLawFallbackHint:
+      "इस प्रश्न के लिए बहुत संबंधित केस-कानून अंश नहीं मिले। नीचे उपलब्ध सबसे नज़दीकी संदर्भ मैन्युअल समीक्षा हेतु दिखाए गए हैं।",
     refSummary: "संदर्भ (सार)",
     immSafety: "तत्काल सुरक्षा व हेल्पलाइन",
     keyHelplines: "मुख्य हेल्पलाइन व आपात नंबर",
@@ -408,9 +503,11 @@ const M = {
     verifiedListing: "सूची सत्यापित",
     nextH2: "अगले कदम",
     chatH2: "चैट",
+    chatSectionAria: "कानूनी सहायता चैट",
+    chatNewThread: "नई बातचीत",
     chatIntro:
-      "हम मुद्दा समझते वक्त संदेश स्ट्रीम करते हैं। अगर अस्पष्ट है तो पूरा मसौदा/प्राधिकारी तय करने से पहले पूछेंगे।",
-    clientModeLabel: "NyayaSetu का उपयोग",
+      "अपनी समस्या बताएं। NyayaSetu मामले का वर्गीकरण कर मार्गदर्शन व मसौदा स्ट्रीम करेगा। ज़रूरत पड़ने पर सवाल पूछेगा।",
+    clientModeLabel: "मोड",
     clientModeCitizen: "सामान्य उपयोगकर्ता",
     clientModeLawyer: "वकील / कानूनी पेशेवर",
     clientModeHint:
@@ -429,7 +526,23 @@ const M = {
     filingForumCaption: "सुझाया गया फोरम कैप्शन",
     filingPrayer: "प्रार्थना / राहत चेकलिस्ट",
     filingAnnexures: "संलग्नक चेकलिस्ट",
-    emptyChat: "शुरू करने के लिए नीचे अपनी समस्या लिखें।",
+    emptyChat: "निचले बॉक्स में अपनी समस्या लिखें; श्रेणी चुनने की ज़रूरत नहीं — सही रूप हम साथ-साथ ढूँढ लेंगे।",
+    chatEmptyHint: "जवाब यहाँ दिखेंगे। मुद्दा नीचे वाले बॉक्स में लिखें।",
+    optionalDetailsToggle: "वैकल्पिक: पत्र-पेटी के लिए नाम, फोन व पता",
+    chatWelcomeTitle: "यहीं से शुरू करें",
+    chatWelcomeSub: "मुख्य बातचीत नीचे है; हम मामले का वर्गीकरण कर जवाब आकार देंगे।",
+    uiInfoTooltipAria: "इस विकल्प के बारे में और",
+    chatChipLetter: "पत्र या आवेदन",
+    chatChipQa: "पहले कानूनी सवाल–जवाब",
+    chatChipConsumer: "उपभोक्ता शिकायत",
+    chatChipGuidance: "मार्गदर्शन, फिर पूर्ण मसौदा",
+    chatChipOwn: "स्वयं लिखूँगा/लिखूँगी",
+    chatTemplateLetter: "मुझे एक औपचारिक कानूनी पत्र या आवेदन चाहिए। स्थिति: ",
+    chatTemplateQa:
+      "मेरा एक कानूनी सवाल है—पहले साफ जवाब दीजिए, जरूरत हो तो अगले कदम। मेरा सवाल: ",
+    chatTemplateConsumer: "मैं एक उपभोक्ता शिकायत तैयार करना चाहता/चाहती हूँ। तथ्य: ",
+    chatTemplateGuidance:
+      "मुझे थोड़ा स्पष्टीकरण चाहिए और फिर पूर्ण पत्र/आवेदन। विषय: ",
     streamDone: "संरचित मार्गदर्शन व मसौदा नीचे (पत्र खंड तक स्क्रॉल करें)।",
     optionalChips: "वैकल्पिक: नीचे चिप्स, बॉक्स में टाइप, या स्किप।",
     sendAnswers: "उत्तर भेजें",
@@ -437,10 +550,12 @@ const M = {
     answerBelow: "नीचे एक संदेश में जवाब दें, फिर भेजें।",
     structReply: "संरचित उत्तर भेजें",
     yourMessage: "आपका संदेश",
-    msgPlaceholder: 'उदा. "मेरा बटुआ नहीं मिल रहा" — पूछे तो खो/चोनी चुनें; PDF/TXT जोड़ सकते हैं।',
+    composerSendShortcutHint: "भेजने हेतु Enter · नई पंक्ति हेतु Shift+Enter",
+    msgPlaceholder: "सरल भाषा में मुद्दा बताएं। PDF, टेक्स्ट या तस्वीर जोड़ सकते हैं।",
+    composerHeroTitle: "आपका कानूनी मुद्दा क्या है?",
+    composerHeroSub: "नीचे सादी भाषा में लिखना शुरू करें—पहली पंक्ति के बाद फ़ाइल या आवाज़ भी जोड़ सकते हैं।",
     attachSizeHint: (mb: string) => `अधिकतम ${mb} MB (टेक्स्ट वाला PDF, .txt, या .md)।`,
-    attachOcrHint:
-      "API पर इमेज OCR चालू है — नोटिस/फ़ॉर्म की फोटो स्वचालित ट्रांसक्रिप्ट हो सकती है; कानूनी रूप से ज़रूरी बातें जाँच लें।",
+    attachOcrHint: "छवियों पर OCR चालू है — कानूनी ज़रूरी बातें जाँच लें।",
     ingestFileTooLarge: (mb: string) =>
       `यह फ़ाइल ${mb} MB सीमा से अधिक है। छोटा फ़ाइल चुनें या पाठ पेस्ट करें।`,
     ingestNoOcr:
@@ -461,7 +576,7 @@ const M = {
     voiceRecording: "रिकॉर्ड हो रहा है… समाप्त पर रोकें दबाएँ",
     voiceTranscribing: "भाषण लिखा जा रहा है…",
     voiceHint:
-      "अपनी समस्या संक्षेप में बोलें; पाठ नीचे आएगा — ज़रूरत हो तो बदलकर भेजें दबाएँ। यह सामान्य दैनिक अनुरोध सीमा में गिना जाता है।",
+      "अपनी समस्या संक्षेप में बोलें; पाठ नीचे आएगा — ज़रूरत हो तो बदलकर Enter से भेजें। यह सामान्य दैनिक अनुरोध सीमा में गिना जाता है।",
     voiceNotSupported:
       "इस ब्राउज़र में आवाज़ रिकॉर्डिंग समर्थित नहीं। डेस्कटॉप पर Chrome या Edge आज़माएँ, या टाइप करें।",
     voiceMicDenied: "माइक्रोफ़ोन की अनुमति अस्वीकृत। ब्राउज़र सेटिंग में साइट हेतु माइक अनुमति दें।",
@@ -527,7 +642,7 @@ const hiLatnOverrides = {
   responseLanguageHint:
     "Model answers are requested in Hindi using Roman letters (Latin script), not Devanagari. You can keep this UI in English.",
   heroSubtitle:
-    "Describe your issue in the chat — we stream progress and ask clarifying questions when routing is uncertain. Explanations and next steps return in Roman Hindi when you choose that language. Educational support only, not a substitute for a qualified lawyer.",
+    "Pehle chat mein apni baat likhen — hum stream karte hain aur jab routing unclear ho to sawaal poochhte hain. Roman Hindi wale option par jawab wahi lekhan mein. Letter par naam-pata chahiye ho to neeche optional hisse mein. Sirf shiksha-samarthan; vakil ka badla nahi.",
   voiceRecord: "Voice input (Roman UI)",
   voiceStop: "Stop & text insert",
   voiceRecording: "Recording… tap Stop when done",
@@ -539,7 +654,7 @@ const hiLatnOverrides = {
   voiceTooLarge: "Audio too large. Try under ~2 minutes.",
   voiceTooShort: "Clip too short. Speak a few seconds, then stop.",
   transcribeNoSpeech: "No clear speech detected. Try again closer to the mic.",
-  clientModeLabel: "Using NyayaSetu as",
+  clientModeLabel: "Mode",
   clientModeCitizen: "General user",
   clientModeLawyer: "Lawyer / legal professional",
   clientModeHint:
@@ -558,6 +673,26 @@ const hiLatnOverrides = {
   filingForumCaption: "Suggested forum caption",
   filingPrayer: "Prayer / relief checklist",
   filingAnnexures: "Annexure checklist",
+  optionalDetailsToggle: "Optional: naam, phone, pata — letter ke liye",
+  chatIntro: "Apna issue likhen — hum classify karke stream karenge. Zarurat ho to sawaal.",
+  chatSectionAria: "Legal help chat",
+  emptyChat:
+    "Neeche box mein likh begin karein — category khud nahi dhoondhni; hum saath-saath sahi format dhoondh lete hain.",
+  chatEmptyHint: "Jawab yahan dikhenge. Apna issue neeche box mein likhein.",
+  chatWelcomeTitle: "Yahin se shuroo",
+  chatWelcomeSub: "Asli kaam neeche chat mein; hum matter classify karke response banayenge.",
+  uiInfoTooltipAria: "Aur jankari",
+  chatChipLetter: "Chitthi / application",
+  chatChipQa: "Pehle Q&A (legal)",
+  chatChipConsumer: "Consumer shikayat",
+  chatChipGuidance: "Samjhao, phir pura draft",
+  chatChipOwn: "Main khud likhoonga/ likhoongi",
+  chatTemplateLetter: "Mujhe ek adhikrit legal chitthi ya avedan chahiye. Sthiti: ",
+  chatTemplateQa:
+    "Mera ek legal sawaal hai—pehle seedha jawab, zarurat ho to agle kadam. Sawaal: ",
+  chatTemplateConsumer: "Main consumer complaint likhna chahta/chahti hoon. Tathya: ",
+  chatTemplateGuidance: "Mujhe thoda samjhaayen, phir poora patra. Vishay: ",
+  composerSendShortcutHint: "Bhejne ke liye Enter, nayi line ke liye Shift+Enter",
 } as unknown as Partial<(typeof M)["en"]>;
 
 export type MessageKey = keyof (typeof M)["en"];

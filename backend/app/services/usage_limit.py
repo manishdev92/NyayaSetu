@@ -6,6 +6,7 @@ from typing import Any
 
 from app.config import settings
 from app.services.pro_entitlements_store import clerk_has_pro_entitlement
+from app.services.user_trial_store import ensure_first_seen_utc, is_in_trial, reset_trial_store_for_tests
 
 
 @dataclass(frozen=True)
@@ -111,8 +112,9 @@ def _redis_day_key(logical_key: str) -> str:
 
 
 def reset_usage_backends_for_tests() -> None:
-    """Clear in-memory counters, optional Redis keys, and test Redis override."""
+    """Clear in-memory counters, optional Redis keys, test Redis override, and trial SQLite handle."""
     global _redis_client_override
+    reset_trial_store_for_tests()
     _authenticated.clear()
     _anonymous.clear()
     if _redis_client_override is not None:
@@ -131,11 +133,19 @@ def reset_usage_backends_for_tests() -> None:
             pass
 
 
+def effective_daily_limit_for_user(user_id: str | None) -> int:
+    """Per-UTC-day cap for generate/ingest: anonymous, Pro, trial, or post-trial base."""
+    return _daily_cap_for_user(user_id)
+
+
 def _daily_cap_for_user(user_id: str | None) -> int:
     if not user_id:
         return int(settings.daily_limit_anonymous)
     if clerk_has_pro_entitlement(user_id):
         return int(settings.daily_limit_pro)
+    ensure_first_seen_utc(user_id)
+    if is_in_trial(user_id):
+        return int(settings.daily_limit_trial)
     return int(settings.daily_limit_authenticated)
 
 

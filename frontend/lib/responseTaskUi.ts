@@ -1,6 +1,7 @@
 /**
- * P2-4: Q&A vs letter-drafting task selector in chat (not authentication).
- * Requires `NEXT_PUBLIC_RESPONSE_TASK_UI=1` at build time; sends `task_type` on generate JSON.
+ * P2-4: Q&A / letter / consumer / both task selector in chat (not authentication).
+ * When `NEXT_PUBLIC_RESPONSE_TASK_UI=1`, the extra style buttons are shown. `task_type` is
+ * still sent for quick-start chips and persisted choice even when this flag is off.
  */
 export function isResponseTaskUiEnabled(): boolean {
   const v = (process.env.NEXT_PUBLIC_RESPONSE_TASK_UI ?? "").trim().toLowerCase();

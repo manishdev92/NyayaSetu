@@ -13,6 +13,23 @@ function normalizeNewlines(s: string): string {
   return s.replace(/\r\n/g, "\n").trim();
 }
 
+/** Strip backend/formatter sentinel lines so the UI “Print & fill” block stays human-readable. */
+export function stripInternalLetterMarkers(block: string): string {
+  const cleaned = block
+    .split("\n")
+    .filter((line) => {
+      const t = line.trim();
+      if (!t) return true;
+      if (/^print_fill/i.test(t)) return false;
+      if (/^#{2,}\s*$/.test(t)) return false;
+      return true;
+    })
+    .join("\n")
+    .replace(/\n{4,}/g, "\n\n\n")
+    .trim();
+  return cleaned;
+}
+
 export function segmentFormalLetter(text: string): LetterSegment[] {
   const raw = normalizeNewlines(text);
   if (!raw) return [{ type: "fallback", content: "" }];
@@ -25,7 +42,8 @@ export function segmentFormalLetter(text: string): LetterSegment[] {
     return [{ type: "fallback", content: raw }];
   }
 
-  const header = toIndex > 0 ? lines.slice(0, toIndex).join("\n").trim() : "";
+  const headerRaw = toIndex > 0 ? lines.slice(0, toIndex).join("\n").trim() : "";
+  const header = stripInternalLetterMarkers(headerRaw);
   const fromTo = lines.slice(toIndex);
   const subIdx = fromTo.findIndex(
     (l) => /^Subject:\s*/i.test(l) || /^विषय:\s*/.test(l.trim())

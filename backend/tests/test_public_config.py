@@ -26,6 +26,9 @@ def test_config_default_is_none(monkeypatch: pytest.MonkeyPatch) -> None:
     assert data.get("stripe_portal_ready") is False
     assert data.get("stripe_webhook_ready") is False
     assert data.get("daily_limit_authenticated") == int(settings.daily_limit_authenticated)
+    assert data.get("daily_limit_trial") == int(settings.daily_limit_trial)
+    assert data.get("trial_period_days") == int(settings.trial_period_days)
+    assert data.get("base_tier_price_inr") == int(settings.base_tier_price_inr)
     assert data.get("daily_limit_pro") == int(settings.daily_limit_pro)
     assert data.get("ingest_ocr_provider") == "none"
     assert data.get("ingest_ocr_ready") is False

@@ -10,7 +10,7 @@ from app.i18n_response_strings import (
     stream_phase_analyzing,
     stream_phase_clarification_banner,
     stream_phase_domain_check,
-    stream_phase_preparing,
+    stream_phase_preparing_for_task,
     stream_phase_urgent_violence,
 )
 from app.api.v1.generate_mappers import (
@@ -356,7 +356,12 @@ async def generate_stream(
                 yield _sse_line({"type": "done"})
                 return
 
-            prefetch = await asyncio.to_thread(prefetch_intent, user_trim, payload.city)
+            prefetch = await asyncio.to_thread(
+                prefetch_intent,
+                user_trim,
+                payload.city,
+                str(getattr(payload, "task_type", None) or "draft_letter"),
+            )
             if str(prefetch.classifier_meta.get("priority_level") or "").strip().upper() == "P0":
                 yield _sse_line(
                     {
@@ -421,7 +426,12 @@ async def generate_stream(
                     yield _sse_line({"type": "done"})
                     return
 
-            yield _sse_line({"type": "phase", "message": stream_phase_preparing(stream_rl)})
+            yield _sse_line(
+                {
+                    "type": "phase",
+                    "message": stream_phase_preparing_for_task(stream_rl, str(payload.task_type or "draft_letter")),
+                }
+            )
             result = await asyncio.to_thread(
                 generate_legal_response,
                 user_trim,

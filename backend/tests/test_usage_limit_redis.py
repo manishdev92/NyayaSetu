@@ -27,6 +27,7 @@ def test_consume_via_redis_respects_cap(monkeypatch: pytest.MonkeyPatch) -> None
     ul.set_redis_client_override_for_tests(fake)
     monkeypatch.setattr(settings, "redis_url", "redis://localhost/0", raising=False)
     monkeypatch.setattr(settings, "daily_limit_authenticated", 2, raising=False)
+    monkeypatch.setattr(settings, "trial_period_days", 0, raising=False)
 
     uid = f"redis-cap-{uuid.uuid4().hex[:8]}"
     ok1, s1 = ul.consume_request(user_id=uid, client_ip=None)

@@ -26,16 +26,46 @@ class Settings(BaseSettings):
     stripe_price_id: str = ""
     # Success/cancel URLs for Checkout; must match your Next.js origin (CORS)
     public_app_url: str = "http://localhost:3000"
-    daily_limit_authenticated: int = 50
+    # Post–free-trial signed-in daily cap (UTC day). Trial window uses `daily_limit_trial` instead.
+    daily_limit_authenticated: int = Field(default=10, ge=1)
+    # Higher cap during the first `trial_period_days` after first authenticated activity (SQLite-backed).
+    daily_limit_trial: int = Field(
+        default=50,
+        ge=1,
+        validation_alias=AliasChoices("DAILY_LIMIT_TRIAL", "daily_limit_trial"),
+    )
+    trial_period_days: int = Field(
+        default=7,
+        ge=0,
+        validation_alias=AliasChoices("TRIAL_PERIOD_DAYS", "trial_period_days"),
+    )
+    trial_db_path: str = ""
+    # GTM / future billing: displayed base tier price (INR); payment collection not implied.
+    base_tier_price_inr: int = Field(
+        default=1,
+        ge=0,
+        validation_alias=AliasChoices("BASE_TIER_PRICE_INR", "base_tier_price_inr"),
+    )
     # When `BILLING_MODE=stripe` and webhooks recorded an active/trialing subscription for the Clerk user
     daily_limit_pro: int = 500
     daily_limit_anonymous: int = 15
+    # Phase 6: stop attaching pipeline clarifications when `clarification_round` reaches this (0-based; was 2).
+    clarification_max_rounds: int = Field(
+        default=8,
+        ge=1,
+        le=20,
+        validation_alias=AliasChoices("CLARIFICATION_MAX_ROUNDS", "clarification_max_rounds"),
+    )
     # SQLite path for Stripe → Clerk subscription rows (`:memory:` for isolated tests)
     entitlements_db_path: str = ""
     # When set, entitlements use Postgres instead of SQLite (multi-instance). See docs/ENTITLEMENTS_POSTGRES.md
     entitlements_database_url: str = ""
     # P8-01: SQLite path for `/dashboard/cases` rows (`:memory:` in tests)
     cases_db_path: str = ""
+    # P8-02: SQLite path for lightweight response feedback rows (`:memory:` in tests)
+    feedback_db_path: str = ""
+    # Chat history threads/messages per Clerk user (default `var/chat_history.sqlite`)
+    chat_history_db_path: str = ""
     # When set, daily generate/ingest counters use Redis (multi-instance). See docs/RATE_LIMIT_REDIS.md
     redis_url: str = ""
     max_upload_bytes: int = 2_000_000
@@ -79,6 +109,13 @@ class Settings(BaseSettings):
         if isinstance(v, str):
             return v.strip()
         return v
+
+    @field_validator("trial_db_path", mode="before")
+    @classmethod
+    def strip_trial_db_path(cls, v: object) -> str:
+        if isinstance(v, str):
+            return v.strip()
+        return ""
 
     @field_validator("stripe_secret_key", "stripe_webhook_secret", "stripe_price_id", mode="before")
     @classmethod
@@ -161,6 +198,20 @@ class Settings(BaseSettings):
     @field_validator("cases_db_path", mode="before")
     @classmethod
     def strip_cases_db_path(cls, v: object) -> str:
+        if isinstance(v, str):
+            return v.strip()
+        return ""
+
+    @field_validator("feedback_db_path", mode="before")
+    @classmethod
+    def strip_feedback_db_path(cls, v: object) -> str:
+        if isinstance(v, str):
+            return v.strip()
+        return ""
+
+    @field_validator("chat_history_db_path", mode="before")
+    @classmethod
+    def strip_chat_history_db_path(cls, v: object) -> str:
         if isinstance(v, str):
             return v.strip()
         return ""

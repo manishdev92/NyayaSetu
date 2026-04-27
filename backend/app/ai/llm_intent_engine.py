@@ -104,7 +104,7 @@ def classify_intent_pipeline(
 ) -> tuple[InterpretationOutput, LegalClassification, dict[str, Any]]:
     """
     Deterministic classification first; LLM only adds entities/context.
-    Optional clarification follow-up (max 2 rounds) appends user answers for re-classification.
+    Optional clarification follow-up (round cap from CLARIFICATION_MAX_ROUNDS) appends user answers for re-classification.
 
     Returns (interpretation, legal_classification, classifier_meta dict).
     """

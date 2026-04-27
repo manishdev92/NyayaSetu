@@ -2,14 +2,16 @@
 
 import { SignInButton, UserButton, useAuth, useUser } from "@clerk/nextjs";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { LegalChat, type UserProfileFields } from "@/components/LegalChat";
 import {
   createBillingPortalSession,
   createStripeCheckoutSession,
+  postResponseFeedback,
   type AuthorityInfo,
   fetchBillingEntitlements,
   fetchPublicConfig,
+  type BillingEntitlements,
   type DocumentEvaluatorReport,
   type GenerateResponse,
   type PublicConfig,
@@ -32,6 +34,44 @@ import { isLawyerModeUiEnabled } from "@/lib/lawyerModeUi";
 import { isResponseTaskUiEnabled } from "@/lib/responseTaskUi";
 import { FormattedLetter } from "@/components/FormattedLetter";
 import { NyayaSetuLogo, NyayaWordmark } from "@/components/marketing/NyayaSetuLogo";
+
+const LETTER_PROFILE_STORAGE_KEY = "nyaya-letter-profile";
+
+function loadLetterProfileFromStorage(): UserProfileFields | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(LETTER_PROFILE_STORAGE_KEY);
+    if (!raw) return null;
+    const j = JSON.parse(raw) as Record<string, unknown>;
+    return {
+      fullName: typeof j.fullName === "string" ? j.fullName : "",
+      address: typeof j.address === "string" ? j.address : "",
+      city: typeof j.city === "string" ? j.city : "",
+      phone: typeof j.phone === "string" ? j.phone : "",
+      email: typeof j.email === "string" ? j.email : "",
+    };
+  } catch {
+    return null;
+  }
+}
+
+function formatUtcTrialEnd(iso: string | null | undefined, locale: AppLocale): string {
+  if (!iso) return "—";
+  try {
+    const normalized = iso.endsWith("Z") ? iso : `${iso.replace(/\.\d+$/, "")}Z`;
+    const d = new Date(normalized);
+    if (Number.isNaN(d.getTime())) return iso;
+    return d.toLocaleDateString(locale === "hi" ? "hi-IN" : "en-IN", {
+      weekday: "short",
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      timeZone: "UTC",
+    });
+  } catch {
+    return iso;
+  }
+}
 
 function responseLangFromLocale(loc: AppLocale): "en" | "hi" | "hi_latn" {
   if (loc === "hi") return "hi";
@@ -67,6 +107,126 @@ function statusBadgeClass(status: AuthorityInfo["status"]): string {
   if (status === "verified") return "bg-emerald-100 text-emerald-900";
   if (status === "suggested") return "bg-sky-100 text-sky-950";
   return "bg-amber-100 text-amber-950";
+}
+
+function buildQuickTakeaways(r: GenerateResponse | null): string[] {
+  if (!r || r.clarification_needed) return [];
+  const out: string[] = [];
+  const push = (raw: string | null | undefined) => {
+    const s = String(raw || "").trim();
+    if (!s) return;
+    if (!out.includes(s)) out.push(s);
+  };
+  for (const n of r.next_steps ?? []) {
+    push(n);
+    if (out.length >= 3) return out;
+  }
+  const firstExplanationLine =
+    (r.explanation || "")
+      .split(/\n+/)
+      .map((x) => x.trim())
+      .find((x) => x.length > 0) ?? "";
+  push(firstExplanationLine);
+  if (out.length >= 3) return out.slice(0, 3);
+  const firstLegalLine =
+    (r.legal_explanation || "")
+      .split(/\n+/)
+      .map((x) => x.trim())
+      .find((x) => x.length > 0) ?? "";
+  push(firstLegalLine);
+  return out.slice(0, 3);
+}
+
+const CASE_LAW_STOPWORDS = new Set([
+  "the",
+  "and",
+  "for",
+  "with",
+  "that",
+  "this",
+  "from",
+  "have",
+  "been",
+  "into",
+  "your",
+  "under",
+  "about",
+  "shall",
+  "would",
+  "there",
+  "their",
+  "where",
+  "which",
+  "when",
+  "were",
+  "also",
+  "issue",
+  "legal",
+  "india",
+  "court",
+  "section",
+  "law",
+  "case",
+  "cases",
+]);
+
+function tokenizeLower(raw: string): string[] {
+  return raw
+    .toLowerCase()
+    .replace(/https?:\/\/\S+/g, " ")
+    .replace(/[^a-z0-9]+/g, " ")
+    .split(" ")
+    .map((x) => x.trim())
+    .filter((x) => x.length >= 4 && !CASE_LAW_STOPWORDS.has(x));
+}
+
+function caseLawIssueKeywords(r: GenerateResponse | null): string[] {
+  if (!r) return [];
+  const blob = [r.explanation || "", r.legal_explanation || "", ...(r.next_steps || []), r.authority?.primary || ""]
+    .join(" ")
+    .slice(0, 5000);
+  const seen = new Set<string>();
+  for (const tok of tokenizeLower(blob)) {
+    if (!seen.has(tok)) seen.add(tok);
+    if (seen.size >= 32) break;
+  }
+  return Array.from(seen);
+}
+
+function caseLawRelevanceScore(
+  ref: { title?: string; citation?: string; snippet?: string; url?: string },
+  issueKeywords: string[],
+): number {
+  if (issueKeywords.length === 0) return 0;
+  const hay = new Set(tokenizeLower(`${ref.title || ""} ${ref.citation || ""} ${ref.snippet || ""} ${ref.url || ""}`));
+  let hit = 0;
+  for (const kw of issueKeywords) {
+    if (hay.has(kw)) hit += 1;
+  }
+  return hit;
+}
+
+function caseLawQuickSummary(ref: { title?: string; snippet?: string }): string {
+  const sn = (ref.snippet || "").trim();
+  if (!sn) return (ref.title || "—").trim();
+  const firstSentence = sn.split(/(?<=[.!?])\s+/)[0]?.trim() || "";
+  if (firstSentence.length >= 40) return firstSentence.slice(0, 280);
+  return sn.slice(0, 280);
+}
+
+function isOfficialCaseLawUrl(url: string): boolean {
+  if (!url) return false;
+  try {
+    const host = new URL(url).hostname.toLowerCase();
+    return (
+      host.endsWith(".gov.in") ||
+      host.endsWith(".nic.in") ||
+      host.includes("ecourts.gov.in") ||
+      host.includes("sci.gov.in")
+    );
+  } catch {
+    return false;
+  }
 }
 
 function LocalAuthoritySection({
@@ -302,12 +462,6 @@ export default function Home() {
     user?.primaryEmailAddress?.emailAddress ||
     null;
 
-  const [fullName, setFullName] = useState("");
-  const [address, setAddress] = useState("");
-  const [city, setCity] = useState("");
-  const [phone, setPhone] = useState("");
-  const [email, setEmail] = useState("");
-
   const [result, setResult] = useState<GenerateResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [copyState, setCopyState] = useState<"idle" | "copied">("idle");
@@ -317,25 +471,83 @@ export default function Home() {
   const [checkoutLoading, setCheckoutLoading] = useState(false);
   const [portalLoading, setPortalLoading] = useState(false);
   const [checkoutSuccess, setCheckoutSuccess] = useState(false);
-  const [proEntitled, setProEntitled] = useState(false);
+  const [billingEntitlements, setBillingEntitlements] = useState<BillingEntitlements | null>(null);
+  const [responseFeedback, setResponseFeedback] = useState<"up" | "down" | null>(null);
+
+  const [letterProfile, setLetterProfile] = useState<UserProfileFields>(() => {
+    const blank: UserProfileFields = {
+      fullName: "",
+      address: "",
+      city: "",
+      phone: "",
+      email: "",
+    };
+    if (typeof window === "undefined") return blank;
+    return loadLetterProfileFromStorage() ?? blank;
+  });
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      window.localStorage.setItem(LETTER_PROFILE_STORAGE_KEY, JSON.stringify(letterProfile));
+    } catch {
+      /* ignore quota / private mode */
+    }
+  }, [letterProfile]);
+
+  const clerkNameFallback = useMemo(
+    () => (user ? [user.firstName, user.lastName].filter(Boolean).join(" ").trim() : ""),
+    [user],
+  );
+  const clerkEmailFallback = user?.primaryEmailAddress?.emailAddress?.trim() ?? "";
+  const letterProfileForApi = useMemo<UserProfileFields>(
+    () => ({
+      fullName: letterProfile.fullName.trim() || clerkNameFallback,
+      address: letterProfile.address,
+      city: letterProfile.city,
+      phone: letterProfile.phone,
+      email: letterProfile.email.trim() || clerkEmailFallback,
+    }),
+    [letterProfile, clerkNameFallback, clerkEmailFallback],
+  );
+
+  const proEntitled = billingEntitlements?.pro === true;
+  const activeMode: "citizen" | "lawyer" = result?.client_mode === "lawyer" ? "lawyer" : "citizen";
+  const quickTakeaways = useMemo(() => buildQuickTakeaways(result), [result]);
+  const issueKeywords = useMemo(() => caseLawIssueKeywords(result), [result]);
+  const rankedCaseLaw = useMemo(() => {
+    const rows = Array.isArray(result?.case_law_references) ? result.case_law_references : [];
+    return rows
+      .map((ref) => ({
+        ...ref,
+        _score: caseLawRelevanceScore(ref, issueKeywords),
+        _summary: caseLawQuickSummary(ref),
+      }))
+      .sort((a, b) => b._score - a._score);
+  }, [result, issueKeywords]);
+  const relevantCaseLaw = useMemo(() => rankedCaseLaw.filter((x) => x._score > 0), [rankedCaseLaw]);
+  const visibleCaseLaw = useMemo(
+    () => (relevantCaseLaw.length > 0 ? relevantCaseLaw : rankedCaseLaw.slice(0, 3)),
+    [rankedCaseLaw, relevantCaseLaw],
+  );
 
   useEffect(() => {
     void fetchPublicConfig().then(setPublicConfig);
   }, []);
 
   useEffect(() => {
-    if (!userId || !isSignedIn || publicConfig?.billing_mode !== "stripe") {
-      setProEntitled(false);
+    if (!userId || !isSignedIn) {
+      setBillingEntitlements(null);
       return;
     }
     let cancelled = false;
     void fetchBillingEntitlements(userId).then((e) => {
-      if (!cancelled && e) setProEntitled(e.pro);
+      if (!cancelled) setBillingEntitlements(e);
     });
     return () => {
       cancelled = true;
     };
-  }, [userId, isSignedIn, publicConfig?.billing_mode]);
+  }, [userId, isSignedIn]);
 
   useEffect(() => {
     if (!checkoutSuccess || !userId || publicConfig?.billing_mode !== "stripe") return;
@@ -346,10 +558,8 @@ export default function Home() {
       attempts += 1;
       void fetchBillingEntitlements(userId).then((e) => {
         if (cancelled) return;
-        if (e?.pro) {
-          setProEntitled(true);
-          return;
-        }
+        setBillingEntitlements(e);
+        if (e?.pro) return;
         window.setTimeout(poll, 1600);
       });
     };
@@ -376,14 +586,6 @@ export default function Home() {
     setStoredLocale(locale);
   }, [locale]);
 
-  const profile: UserProfileFields = {
-    fullName,
-    address,
-    city,
-    phone,
-    email,
-  };
-
   const lawyerModeAvailable =
     isLawyerModeUiEnabled() && Boolean(publicConfig?.client_modes_supported?.includes("lawyer"));
   const responseTaskUiEnabled = isResponseTaskUiEnabled();
@@ -392,7 +594,34 @@ export default function Home() {
     setResult(data);
     setCopyState("idle");
     setCopyRevisedState("idle");
+    setResponseFeedback(null);
     setError(null);
+  }
+
+  function handleFeedback(value: "up" | "down") {
+    setResponseFeedback(value);
+    void postResponseFeedback({
+      helpful: value === "up",
+      client_mode: result?.client_mode === "lawyer" ? "lawyer" : "citizen",
+      task_type: result?.task_type ?? "draft_letter",
+      locale,
+      generation_mode: result?.generation_mode ?? null,
+      userId: userId ?? null,
+    });
+    if (typeof window === "undefined") return;
+    try {
+      window.localStorage.setItem(
+        "nyaya-last-response-feedback",
+        JSON.stringify({
+          helpful: value === "up",
+          mode: result?.client_mode ?? "citizen",
+          task_type: result?.task_type ?? "draft_letter",
+          ts: new Date().toISOString(),
+        }),
+      );
+    } catch {
+      /* ignore storage failures */
+    }
   }
 
   function handleChatError(message: string) {
@@ -479,32 +708,32 @@ export default function Home() {
   return (
     <div className="min-h-full bg-gradient-to-b from-stone-50 via-white to-stone-100/80 text-stone-900">
       <div
-        className={`mx-auto px-4 py-10 sm:px-6 sm:py-16 ${
+        className={`mx-auto px-4 py-5 sm:px-6 sm:py-12 md:py-16 ${
           result?.document_revised?.trim() ? "max-w-6xl" : "max-w-4xl"
         }`}
       >
-        <header className="mb-12 flex flex-col gap-8 sm:flex-row sm:items-start sm:justify-between">
+        <header className="mb-6 flex flex-col gap-4 sm:mb-12 sm:flex-row sm:items-start sm:justify-between sm:gap-8">
           <div className="text-center sm:text-left">
             <Link
               href="/"
-              className="group mx-auto flex max-w-lg flex-col items-center gap-2 rounded-xl py-1 outline-none ring-amber-700/20 focus-visible:ring-2 sm:mx-0 sm:flex-row sm:items-center sm:gap-3 sm:text-left"
+              className="group mx-auto flex max-w-lg flex-col items-center gap-1.5 rounded-xl py-1 outline-none ring-amber-700/20 focus-visible:ring-2 sm:mx-0 sm:flex-row sm:items-center sm:gap-3 sm:text-left"
             >
-              <NyayaSetuLogo className="h-11 w-11 shrink-0 transition group-hover:opacity-90" aria-hidden />
+              <NyayaSetuLogo className="h-9 w-9 shrink-0 transition group-hover:opacity-90 sm:h-11 sm:w-11" aria-hidden />
               <span className="flex flex-col items-center sm:items-start">
-                <NyayaWordmark className="text-lg transition group-hover:text-amber-950 sm:text-xl" />
-                <span className="mt-0.5 text-xs font-medium text-stone-600 sm:text-sm">
+                <NyayaWordmark className="text-base transition group-hover:text-amber-950 sm:text-lg md:text-xl" />
+                <span className="mt-0.5 text-[11px] font-medium leading-tight text-stone-600 sm:text-sm">
                   {t(locale, "brandTagline")}
                 </span>
               </span>
             </Link>
-            <h1 className="mt-5 text-4xl font-semibold tracking-tight text-stone-900 sm:mt-6 sm:text-5xl">
+            <h1 className="mt-3 text-2xl font-semibold tracking-tight text-stone-900 sm:mt-5 sm:text-4xl md:text-5xl">
               {t(locale, "heroTitle")}
             </h1>
-            <p className="mt-4 max-w-2xl text-lg leading-relaxed text-stone-600 sm:text-xl">
+            <p className="mt-2 hidden max-w-2xl text-lg leading-relaxed text-stone-600 sm:mt-4 sm:block md:text-xl">
               {t(locale, "heroSubtitle")}
             </p>
-            <div className="mt-5 flex flex-col gap-2">
-            <div className="flex flex-wrap items-center justify-center gap-2 text-base text-stone-600 sm:justify-start">
+            <div className="mt-3 flex flex-col gap-2 sm:mt-5">
+            <div className="flex flex-wrap items-center justify-center gap-2 text-sm text-stone-600 sm:justify-start sm:text-base">
               <span className="text-sm font-medium text-stone-500">{t(locale, "language")}:</span>
               <div className="inline-flex gap-1 rounded-xl border border-stone-200 bg-stone-100/90 p-1 shadow-sm">
                 <button
@@ -543,14 +772,14 @@ export default function Home() {
               </div>
             </div>
             {publicConfig ? (
-              <p className="text-sm text-stone-600">
+              <p className="text-xs text-stone-600 sm:text-sm">
                 {publicConfig.rag_vector_store === "pinecone"
                   ? t(locale, "ragModePinecone")
                   : t(locale, "ragModeLocal")}
               </p>
             ) : null}
             </div>
-            <p className="mt-2 text-sm leading-relaxed text-stone-600">{t(locale, "responseLanguageHint")}</p>
+            <p className="mt-1 hidden text-sm leading-relaxed text-stone-600 md:block">{t(locale, "responseLanguageHint")}</p>
           </div>
           <div className="flex flex-col items-center gap-2 sm:items-end">
             {isLoaded && isSignedIn ? (
@@ -583,6 +812,34 @@ export default function Home() {
           >
             {t(locale, "checkoutSuccessBanner")}
           </p>
+        ) : null}
+
+        {billingEntitlements?.in_trial &&
+        !billingEntitlements.pro &&
+        publicConfig &&
+        billingEntitlements.daily_limit > 0 ? (
+          <aside
+            className="mb-6 rounded-2xl border border-sky-200 bg-gradient-to-r from-sky-50/95 to-white p-4 shadow-sm"
+            role="status"
+            aria-label={t(locale, "trialBannerTitle") as string}
+          >
+            <p className="text-sm font-semibold text-sky-950">{t(locale, "trialBannerTitle")}</p>
+            <p className="mt-1 text-xs leading-relaxed text-sky-950/90">
+              {(
+                t(locale, "trialBannerBody") as (
+                  a: string,
+                  b: number,
+                  c: number,
+                  d: number,
+                ) => string
+              )(
+                formatUtcTrialEnd(billingEntitlements.trial_ends_at_utc ?? null, locale),
+                billingEntitlements.daily_limit,
+                publicConfig.daily_limit_authenticated,
+                publicConfig.base_tier_price_inr,
+              )}
+            </p>
+          </aside>
         ) : null}
 
         {publicConfig?.paywall_visible ? (
@@ -654,69 +911,84 @@ export default function Home() {
             )}
           </p>
         ) : null}
+        <div className="mt-3 flex items-center justify-end">
+          <span
+            className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ${
+              activeMode === "lawyer" ? "bg-indigo-100 text-indigo-950" : "bg-stone-200 text-stone-800"
+            }`}
+          >
+            {t(locale, "modeBadgeLabel")}: {activeMode === "lawyer" ? t(locale, "modeLawyer") : t(locale, "modeCitizen")}
+          </span>
+        </div>
 
-        <div className="space-y-8">
-          <div className="space-y-4 rounded-2xl border border-stone-200/80 bg-white/80 p-5 shadow-sm sm:p-6">
-            <p className="text-base font-semibold text-stone-800">{t(locale, "yourDetails")}</p>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <label className="block sm:col-span-2">
-                <span className="mb-1.5 block text-sm font-medium text-stone-600">{t(locale, "fullName")}</span>
-                <input
-                  type="text"
-                  value={fullName}
-                  onChange={(e) => setFullName(e.target.value)}
-                  placeholder={t(locale, "fullNamePh")}
-                  className="w-full rounded-xl border border-stone-200 bg-white px-3.5 py-2.5 text-base text-stone-900 shadow-sm outline-none ring-amber-700/15 focus:border-amber-600 focus:ring-2"
-                  autoComplete="name"
-                />
-              </label>
-              <label className="block">
-                <span className="mb-1.5 block text-sm font-medium text-stone-600">{t(locale, "phone")}</span>
-                <input
-                  type="tel"
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  className="w-full rounded-xl border border-stone-200 bg-white px-3.5 py-2.5 text-base text-stone-900 shadow-sm outline-none ring-amber-700/15 focus:border-amber-600 focus:ring-2"
-                  autoComplete="tel"
-                />
-              </label>
-              <label className="block">
-                <span className="mb-1.5 block text-sm font-medium text-stone-600">{t(locale, "email")}</span>
-                <input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="w-full rounded-xl border border-stone-200 bg-white px-3.5 py-2.5 text-base text-stone-900 shadow-sm outline-none ring-amber-700/15 focus:border-amber-600 focus:ring-2"
-                  autoComplete="email"
-                />
-              </label>
-              <label className="block sm:col-span-2">
-                <span className="mb-1.5 block text-sm font-medium text-stone-600">{t(locale, "address")}</span>
-                <input
-                  type="text"
-                  value={address}
-                  onChange={(e) => setAddress(e.target.value)}
-                  className="w-full rounded-xl border border-stone-200 bg-white px-3.5 py-2.5 text-base text-stone-900 shadow-sm outline-none ring-amber-700/15 focus:border-amber-600 focus:ring-2"
-                  autoComplete="street-address"
-                />
-              </label>
-              <label className="block sm:col-span-2">
-                <span className="mb-1.5 block text-sm font-medium text-stone-600">{t(locale, "city")}</span>
-                <input
-                  type="text"
-                  value={city}
-                  onChange={(e) => setCity(e.target.value)}
-                  placeholder={t(locale, "cityPh")}
-                  className="w-full rounded-xl border border-stone-200 bg-white px-3.5 py-2.5 text-base text-stone-900 shadow-sm outline-none ring-amber-700/15 focus:border-amber-600 focus:ring-2"
-                  autoComplete="address-level2"
-                />
-              </label>
-            </div>
+        <section
+          className="mt-5 rounded-2xl border border-stone-200/90 bg-white p-4 shadow-sm ring-1 ring-stone-100 sm:p-5"
+          aria-label={String(t(locale, "yourDetails"))}
+          suppressHydrationWarning
+        >
+          <h2 className="text-base font-semibold tracking-tight text-stone-900">{t(locale, "yourDetails")}</h2>
+          <p className="mt-1 text-sm text-stone-600">{t(locale, "optionalDetailsToggle")}</p>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <label className="block sm:col-span-2">
+              <span className="text-xs font-medium text-stone-700">{t(locale, "fullName")}</span>
+              <input
+                type="text"
+                autoComplete="name"
+                value={letterProfile.fullName}
+                onChange={(e) => setLetterProfile((p) => ({ ...p, fullName: e.target.value }))}
+                placeholder={String(t(locale, "fullNamePh"))}
+                className="mt-1 w-full rounded-xl border border-stone-200 bg-stone-50/50 px-3 py-2.5 text-base text-stone-900 placeholder:text-stone-400 focus:border-amber-500/60 focus:outline-none focus:ring-2 focus:ring-amber-500/25"
+              />
+            </label>
+            <label className="block">
+              <span className="text-xs font-medium text-stone-700">{t(locale, "phone")}</span>
+              <input
+                type="tel"
+                autoComplete="tel"
+                inputMode="tel"
+                value={letterProfile.phone}
+                onChange={(e) => setLetterProfile((p) => ({ ...p, phone: e.target.value }))}
+                className="mt-1 w-full rounded-xl border border-stone-200 bg-stone-50/50 px-3 py-2.5 text-base text-stone-900 focus:border-amber-500/60 focus:outline-none focus:ring-2 focus:ring-amber-500/25"
+              />
+            </label>
+            <label className="block">
+              <span className="text-xs font-medium text-stone-700">{t(locale, "email")}</span>
+              <input
+                type="email"
+                autoComplete="email"
+                value={letterProfile.email}
+                onChange={(e) => setLetterProfile((p) => ({ ...p, email: e.target.value }))}
+                className="mt-1 w-full rounded-xl border border-stone-200 bg-stone-50/50 px-3 py-2.5 text-base text-stone-900 focus:border-amber-500/60 focus:outline-none focus:ring-2 focus:ring-amber-500/25"
+              />
+            </label>
+            <label className="block sm:col-span-2">
+              <span className="text-xs font-medium text-stone-700">{t(locale, "address")}</span>
+              <textarea
+                rows={2}
+                autoComplete="street-address"
+                value={letterProfile.address}
+                onChange={(e) => setLetterProfile((p) => ({ ...p, address: e.target.value }))}
+                className="mt-1 w-full resize-y rounded-xl border border-stone-200 bg-stone-50/50 px-3 py-2.5 text-base text-stone-900 focus:border-amber-500/60 focus:outline-none focus:ring-2 focus:ring-amber-500/25"
+              />
+            </label>
+            <label className="block sm:col-span-2">
+              <span className="text-xs font-medium text-stone-700">{t(locale, "city")}</span>
+              <input
+                type="text"
+                autoComplete="address-level2"
+                value={letterProfile.city}
+                onChange={(e) => setLetterProfile((p) => ({ ...p, city: e.target.value }))}
+                placeholder={String(t(locale, "cityPh"))}
+                className="mt-1 w-full rounded-xl border border-stone-200 bg-stone-50/50 px-3 py-2.5 text-base text-stone-900 placeholder:text-stone-400 focus:border-amber-500/60 focus:outline-none focus:ring-2 focus:ring-amber-500/25"
+              />
+            </label>
           </div>
+        </section>
 
+        <div id="chat-composer" className="scroll-mt-20">
           <LegalChat
             userId={userId ?? null}
-            profile={profile}
+            profile={letterProfileForApi}
             onComplete={handleChatComplete}
             onError={handleChatError}
             locale={locale}
@@ -742,6 +1014,23 @@ export default function Home() {
 
         {result && (
           <div className="mt-10 space-y-10">
+            {!result.clarification_needed ? (
+              <section className="rounded-xl border border-amber-200 bg-amber-50/80 px-4 py-3 text-sm leading-relaxed text-amber-950 shadow-sm">
+                {t(locale, "verifyBeforeAction")}
+              </section>
+            ) : null}
+
+            {!result.clarification_needed && quickTakeaways.length > 0 ? (
+              <section className="rounded-2xl border border-sky-200/80 bg-sky-50/60 p-5 shadow-sm">
+                <h2 className="text-base font-semibold tracking-tight text-sky-950">{t(locale, "quickSummaryTitle")}</h2>
+                <ul className="mt-2 list-disc space-y-1.5 pl-5 text-sm leading-relaxed text-sky-950">
+                  {quickTakeaways.map((item, i) => (
+                    <li key={`quick-${i}`}>{item}</li>
+                  ))}
+                </ul>
+              </section>
+            ) : null}
+
             {!result.clarification_needed &&
             (result.crisis_triage_mode ||
               (result.emergency_contacts && result.emergency_contacts.length > 0) ||
@@ -1016,7 +1305,11 @@ export default function Home() {
                     </div>
                     <p className="mt-2 text-sm leading-relaxed text-stone-600">{t(locale, "exportPrintHint")}</p>
                     <div className="mt-4 rounded-xl border border-amber-900/20 bg-white/90 px-4 py-5 shadow-inner sm:px-6 sm:py-6">
-                      <FormattedLetter text={result.document_revised} emptyLabel={t(locale, "noDocument")} />
+                      <FormattedLetter
+                        text={result.document_revised}
+                        emptyLabel={t(locale, "noDocument")}
+                        presentation="raw"
+                      />
                     </div>
                   </div>
                 </div>
@@ -1150,15 +1443,37 @@ export default function Home() {
               <section className="rounded-2xl border border-slate-200/90 bg-slate-50/80 p-7 shadow-md">
                 <h2 className="text-xl font-semibold text-slate-900">{t(locale, "caseLawH2")}</h2>
                 <p className="mt-2 text-sm leading-relaxed text-slate-600 sm:text-base">{t(locale, "caseLawNote")}</p>
-                {Array.isArray(result.case_law_references) && result.case_law_references.length > 0 ? (
-                  <ul className="mt-4 space-y-3 text-sm text-slate-800 sm:text-base">
-                    {result.case_law_references.map((c, i) => (
-                      <li key={i} className="rounded-lg border border-slate-200 bg-white/90 p-3 leading-relaxed">
-                        <div className="font-medium text-slate-900">
+                {visibleCaseLaw.length > 0 ? (
+                  <ul className="mt-4 space-y-3 text-base text-slate-800 sm:text-[1.0625rem]">
+                    {relevantCaseLaw.length === 0 ? (
+                      <li className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
+                        {t(locale, "caseLawFallbackHint")}
+                      </li>
+                    ) : null}
+                    {visibleCaseLaw.map((c, i) => (
+                      <li key={i} className="rounded-lg border border-slate-200 bg-white/90 p-3.5 leading-relaxed">
+                        <div className="text-base font-semibold text-slate-900 sm:text-lg">
                           {c.title?.trim() || c.citation?.trim() || "—"}
                         </div>
+                        <div className="mt-1 flex flex-wrap gap-2">
+                          <span
+                            className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${
+                              c._score >= 3
+                                ? "bg-emerald-100 text-emerald-900"
+                                : c._score >= 1
+                                  ? "bg-amber-100 text-amber-950"
+                                  : "bg-stone-200 text-stone-700"
+                            }`}
+                          >
+                            {c._score >= 3
+                              ? t(locale, "caseLawRelStrong")
+                              : c._score >= 1
+                                ? t(locale, "caseLawRelPossible")
+                                : t(locale, "caseLawRelLow")}
+                          </span>
+                        </div>
                         {(c.citation && c.title) || c.court || c.year != null ? (
-                          <div className="mt-1 text-xs text-slate-600">
+                          <div className="mt-1 text-sm text-slate-600">
                             {c.court ? <span>{c.court}</span> : null}
                             {c.court && c.year != null ? " · " : null}
                             {c.year != null ? <span>{c.year}</span> : null}
@@ -1167,15 +1482,44 @@ export default function Home() {
                             ) : null}
                           </div>
                         ) : null}
+                        <div className="mt-2 rounded-md border border-slate-200/80 bg-slate-50 px-2.5 py-2">
+                          <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+                            {t(locale, "caseLawQuickSummaryLabel")}
+                          </p>
+                          <p className="mt-1 text-base text-slate-900">{c._summary}</p>
+                        </div>
+                        {c.relevance_reason ? (
+                          <div className="mt-2 rounded-md border border-indigo-200/80 bg-indigo-50/60 px-2.5 py-2">
+                            <p className="text-xs font-semibold uppercase tracking-wide text-indigo-700">
+                              {t(locale, "caseLawWhyRelatedLabel")}
+                            </p>
+                            <p className="mt-1 text-base text-indigo-950">{c.relevance_reason}</p>
+                          </div>
+                        ) : null}
+                        {!isOfficialCaseLawUrl(c.url) ? (
+                          <div className="mt-2 rounded-md border border-amber-200/80 bg-amber-50 px-2.5 py-2">
+                            <p className="text-xs font-semibold uppercase tracking-wide text-amber-900">
+                              {t(locale, "caseLawVerifyOfficialLabel")}
+                            </p>
+                            <a
+                              href="https://judgments.ecourts.gov.in/"
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="mt-1 inline-block text-sm font-medium text-amber-950 underline decoration-amber-400 underline-offset-2 hover:text-amber-900 sm:text-base"
+                            >
+                              {t(locale, "caseLawOpenEcourts")}
+                            </a>
+                          </div>
+                        ) : null}
                         {c.snippet ? (
-                          <p className="mt-2 whitespace-pre-line text-slate-800">{c.snippet}</p>
+                          <p className="mt-2 whitespace-pre-line text-base text-slate-800">{c.snippet}</p>
                         ) : null}
                         {c.url ? (
                           <a
                             href={c.url}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="mt-2 inline-block break-all text-slate-800 underline decoration-slate-300 underline-offset-2 hover:text-slate-950"
+                            className="mt-2 inline-block break-all text-base text-slate-800 underline decoration-slate-300 underline-offset-2 hover:text-slate-950"
                           >
                             {c.url}
                           </a>
@@ -1280,6 +1624,37 @@ export default function Home() {
                 ))}
               </ol>
             </section>
+
+            {!result.clarification_needed ? (
+              <section className="rounded-xl border border-stone-200 bg-stone-50/70 px-4 py-3 shadow-sm">
+                <p className="text-sm font-medium text-stone-800">{t(locale, "helpfulPrompt")}</p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleFeedback("up")}
+                    className={`rounded-lg px-3 py-1.5 text-sm font-semibold ${
+                      responseFeedback === "up"
+                        ? "bg-emerald-700 text-white"
+                        : "border border-emerald-300 bg-white text-emerald-900 hover:bg-emerald-50"
+                    }`}
+                  >
+                    {t(locale, "helpfulYes")}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleFeedback("down")}
+                    className={`rounded-lg px-3 py-1.5 text-sm font-semibold ${
+                      responseFeedback === "down"
+                        ? "bg-rose-700 text-white"
+                        : "border border-rose-300 bg-white text-rose-900 hover:bg-rose-50"
+                    }`}
+                  >
+                    {t(locale, "helpfulNo")}
+                  </button>
+                </div>
+                {responseFeedback ? <p className="mt-2 text-xs text-stone-600">{t(locale, "helpfulThanks")}</p> : null}
+              </section>
+            ) : null}
           </div>
         )}
       </div>

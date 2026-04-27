@@ -2,9 +2,15 @@
 
 import { useEffect, useState } from "react";
 import { fetchPublicConfig, type PublicConfig } from "@/services/api";
-import type { MarketingBundle } from "@/lib/marketingBundles";
+import type { MarketingLocale, MarketingBundle } from "@/lib/marketingBundles";
 
-export function LiveDeploymentCaps({ copy }: { copy: MarketingBundle["liveCaps"] }) {
+export function LiveDeploymentCaps({
+  copy,
+  locale = "en",
+}: {
+  copy: MarketingBundle["liveCaps"];
+  locale?: MarketingLocale;
+}) {
   const [cfg, setCfg] = useState<PublicConfig | null | undefined>(undefined);
 
   useEffect(() => {
@@ -43,6 +49,22 @@ export function LiveDeploymentCaps({ copy }: { copy: MarketingBundle["liveCaps"]
         <div>
           <dt className="text-stone-500">{copy.dailyAuth}</dt>
           <dd className="font-medium text-stone-900">{cfg.daily_limit_authenticated}</dd>
+        </div>
+        <div className="sm:col-span-2">
+          <dt className="text-stone-500">{copy.signupOfferLabel}</dt>
+          <dd className="font-medium text-stone-900">
+            {locale === "hi" ? (
+              <>
+                {cfg.trial_period_days} दिन का ट्रायल, प्रतिदिन {cfg.daily_limit_trial} अनुरोध → फिर मुफ्त खाता ₹
+                {cfg.base_tier_price_inr}/दिन (अधिकतम {cfg.daily_limit_authenticated} अनुरोध/दिन, UTC)
+              </>
+            ) : (
+              <>
+                {cfg.trial_period_days}-day trial at {cfg.daily_limit_trial}/day → free account ₹
+                {cfg.base_tier_price_inr}/day (up to {cfg.daily_limit_authenticated} requests/day, UTC)
+              </>
+            )}
+          </dd>
         </div>
         <div>
           <dt className="text-stone-500">{copy.dailyPro}</dt>

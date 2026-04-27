@@ -55,7 +55,7 @@ from app.authority import (
 from app.services.emergency_detector import EmergencyLayerResult, emergency_categories_for_issue
 from app.services.emergency_intelligence import fetch_emergency_reference_links, resolve_emergency_contacts
 from app.services.emergency_intelligence.resolver import registry_disclaimer
-from app.core.legal_classifier import ClassifierMeta
+from app.core.legal_classifier import ClassifierMeta, _consumer_cpa_retail_purchase_dispute
 from app.services.emergency_fir_draft import (
     build_incident_line,
     parse_emergency_narrative_context,
@@ -63,7 +63,7 @@ from app.services.emergency_fir_draft import (
     render_emergency_fir_short,
 )
 from app.services.authority_hierarchy_service import build_authority_hierarchy
-from app.services.crisis_triage import crisis_triage_lock
+from app.services.crisis_triage import crisis_triage_lock, is_police_complaint_followup_escalation
 from app.services.police_station_incident_cues import alleges_arson_or_fire_at_police_station
 from app.services.clarification_engine import (
     ambiguous_intent_for_llm_clarification,
@@ -159,7 +159,10 @@ class IntentPrefetch(NamedTuple):
     taxonomy_ui: LegalClassification
 
 
-def prefetch_intent(user_input: str, city: str | None) -> IntentPrefetch:
+def prefetch_intent(
+    user_input: str, city: str | None, task_type: str | None = None
+) -> IntentPrefetch:
+    task_n = _normalize_task_type(task_type)
     interpretation, taxonomy, classifier_meta = classify_intent_pipeline(user_input, city=city)
     multi_intent_result = detect_multi_intent(user_input, taxonomy, classifier_meta)
     taxonomy, classifier_meta = _maybe_override_for_multi_intent(
@@ -173,6 +176,9 @@ def prefetch_intent(user_input: str, city: str | None) -> IntentPrefetch:
     )
     taxonomy, classifier_meta = apply_law_and_order_land_hybrid_merge(
         user_input.strip(), taxonomy, classifier_meta
+    )
+    taxonomy, classifier_meta, _ = apply_consumer_complaint_routing_override(
+        user_input, task_n, taxonomy, classifier_meta
     )
     issue_profile = classify_issue_enriched(user_input, taxonomy, classifier_meta)
     taxonomy_ui: LegalClassification = {
@@ -364,6 +370,7 @@ You receive USER CONTEXT, CLASSIFIER_JSON (intent/entities only), LEGAL_CLASSIFI
 ## AUTHORITY_LOCK (MANDATORY — deterministic routing wins)
 - **You MUST NOT choose or override the primary authority.** Use **only** the primary/secondary strings from **AUTHORITY_BLOCK_JSON** and **JURISDICTION_ROUTER_JSON** for whom the letter is addressed and what next_steps recommend.
 - If anything in INTERPRETATION_JSON or your prior knowledge **conflicts** with those JSON blocks, **ignore the conflicting hint** and follow the JSON blocks.
+- **Exception (consumer / CPA):** when **DETERMINISTIC_CLASSIFIER_META.category** is `consumer` or the user message includes **## TASK_TYPE = consumer_complaint_filing** (or **CONSUMER_FILING_TOOLKIT**), the `document` must be addressed to the **Consumer Commission** path (DCDRC/State/NCDRC per pecuniary rules) for product / e-commerce / refund / defect / delivery disputes — **not** a To-SHO / FIR as the main application, even if JSON secondaries mention police or cyber reporting.
 - For **criminal / police / FIR** routes: the letter goes to **Police Station / SHO** (FIR-style), **not** Labour Commissioner, Consumer Commission, Tehsildar, District Collector, or District Magistrate as the primary addressee.
 - For **cyber_fraud** route: include **National Cyber Crime Reporting Portal** (URL from OFFICIAL_LINKS_JSON) **and** jurisdictional police.
 
@@ -532,6 +539,148 @@ HYBRID_AUTHORITY_ALIGNMENT_REGEN_ADDON = (
     "When ## RESPONSE_LANGUAGE exists, write all sections in that language/script (headings may mirror the same language)."
 )
 
+# Used when a prior pass produced To-SHO / FIR text for a product, e-commerce, or CPA dispute.
+CONSUMER_FORUM_MISMATCH_REGEN = (
+    "\n\nMANDATORY — WRONG FORUM: The previous `document` uses **The Station House Officer** / **information for registration of FIR** "
+    "or a similar police-complaint layout. This case is a **Consumer Protection Act (CPA) / District Consumer Commission** matter "
+    "— defective goods, online purchase, late delivery, refund/return/warranty, seller/platform refusal.\n"
+    "You must **completely replace** the `document`. Do not edit in place. Do not keep any To, SHO, jurisdictional thana, Subject line "
+    "requesting FIR registration, or prayer to 'register an FIR'.\n"
+    "The new `document` must be ONLY: **To** the District Consumer Disputes Redressal Commission (with [District] / [State] placeholders as needed); "
+    "**Subject:** a consumer complaint (defect, deficiency, denial of return); **Respected Sir/Madam,**; clear facts; deficiency / unfair "
+    "trade (short); prayer for **refund/replacement, compensation, costs**; one line on annexures; **Thanking you.** then **Yours sincerely,** and "
+    "separate lines with **[Your Name]**, **[Address]**, **Mobile: […]**, **[Date]**.\n"
+    "No `## PRINT_FILL_HEADER` at the top; no *Official contact* (police chowki) line; no duplicate complainant table after the closing. "
+    "Follow all rules in the **## TASK_TYPE = consumer_complaint_filing** and **CONSUMER_FILING_TOOLKIT** sections of this message, if present."
+)
+
+
+def _document_looks_like_sho_fir_complaint_letter(document: str) -> bool:
+    d = (document or "").strip()[:5000]
+    if len(d) < 60:
+        return False
+    return bool(
+        re.search(
+            r"(?i)station\s+house\s+officer|police\s+station\s+having\s+territorial|"
+            r"information\s+for\s+registration\s+of\s+fir",
+            d,
+        )
+    )
+
+
+def _mismatch_sho_fir_for_consumer_draft(
+    user_input: str,
+    task_type_n: str,
+    document: str,
+    *,
+    classifier_meta: ClassifierMeta,
+    taxonomy_ui: LegalClassification,
+) -> bool:
+    if not _document_looks_like_sho_fir_complaint_letter(document):
+        return False
+    u = (user_input or "").strip()
+    cat = str(classifier_meta.get("category") or "")
+    it = str(taxonomy_ui.get("issue_type") or "")
+    ri = str(classifier_meta.get("router_intent") or "")
+    if _effective_consumer_formatter_task_type(
+        u, _normalize_task_type(task_type_n if isinstance(task_type_n, str) else None), category=cat
+    ) == "consumer_complaint_filing" or (cat == "consumer" and it == "consumer"):
+        return True
+    if _pasted_fir_letter_with_consumer_shopping_facts(u) or _user_text_seeks_consumer_commission_filing(u):
+        return True
+    if re.search(
+        r"(?i)\b(defect|warranty|refund|return|bought|online|purchas|e-?com|unfair\s+trade|"
+        r"deficiency|seller|delivery|phone|order|₹|rupee)\b",
+        u,
+    ) and re.search(
+        r"(?i)defect|warranty|refund|return|unfair|trade|on\s+line|online|delivery|₹|seller|complaint",
+        document,
+    ) and it not in ("police",) and ri not in (
+        "criminal_police",
+    ):
+        if re.search(
+            r"(?i)\b(assault|theft|rob|kidnap|rape|missing\s+person|fraudulent\s+withdraw|gun|weapon)\b", u
+        ) and "defect" not in u.lower() and "warranty" not in u.lower() and "refund" not in u.lower():
+            return False
+        return True
+    # SHO body + product/e-commerce facts (or combined user+doc) — always wrong forum for CPA
+    _combo = f"{u} {(document or '')[:4500]}"
+    if _consumer_cpa_retail_purchase_dispute(_combo):
+        if re.search(
+            r"(?i)\b(murder|rape|kidnap|abduct|assault(?!\s+and\s+battery)|stolen|theft|snatch|robber)\b", u
+        ) and "defect" not in _combo and "warranty" not in _combo and "refund" not in _combo:
+            return False
+        return True
+    return False
+
+
+def _user_message_for_consumer_mismatch_repair(
+    user_message: str,
+    *,
+    user_input: str,
+    city: str | None,
+    classifier_meta: ClassifierMeta,
+    router_result: object | None,
+) -> str:
+    if "CONSUMER_FILING_TOOLKIT" in user_message:
+        return user_message
+    ccat = str(classifier_meta.get("category") or "consumer")
+    pri = ""
+    if isinstance(router_result, dict):
+        pri = str(router_result.get("primary_authority") or "")
+    b = _build_consumer_filing_blocks(
+        user_input=str(user_input).strip(),
+        category=ccat,
+        task_type="consumer_complaint_filing",
+        authority_primary=pri,
+        city=city if isinstance(city, str) else None,
+    )
+    return (
+        user_message
+        + "\n\n---\nCONSUMER_FILING_TOOLKIT (mandatory for this redraft; CPA, not police/FIR):\n"
+        + json.dumps(b, ensure_ascii=False)
+    )
+
+
+def _regenerate_mismatching_sho_as_consumer_draft(
+    client: OpenAI,
+    user_message: str,
+    data: dict[str, Any],
+    *,
+    user_input: str,
+    task_type_n: str,
+    city: str | None,
+    classifier_meta: ClassifierMeta,
+    taxonomy_ui: LegalClassification,
+    language_addon: str,
+    router_result: dict[str, Any] | None,
+) -> None:
+    for _ in range(2):
+        if not _mismatch_sho_fir_for_consumer_draft(
+            user_input, task_type_n, str(data.get("document") or ""), classifier_meta=classifier_meta, taxonomy_ui=taxonomy_ui
+        ):
+            return
+        uxm = _user_message_for_consumer_mismatch_repair(
+            user_message, user_input=user_input, city=city, classifier_meta=classifier_meta, router_result=router_result
+        )
+        try:
+            new = _run_formatter(
+                client,
+                uxm
+                + "\n\n---\nREMINDER: The last `document` was a police / FIR application — replace it with a **Consumer Commission** "
+                "complaint only, per CONSUMER_FORUM_MISMATCH_REGEN.\n",
+                strict_addon=CONSUMER_FORUM_MISMATCH_REGEN,
+                language_addon=language_addon,
+                task_type_addon=_task_type_formatter_addon("consumer_complaint_filing"),
+            )
+            data["document"] = new.get("document", "")
+            if "explanation" in new and new.get("explanation") is not None:
+                data["explanation"] = new.get("explanation", "")
+            if "next_steps" in new and new.get("next_steps") is not None:
+                data["next_steps"] = new.get("next_steps", [])
+        except Exception:
+            return
+
 
 def _formatter_language_addon(response_language: str) -> str:
     rl = (response_language or "en").strip().lower().replace("-", "_")
@@ -582,6 +731,152 @@ def _normalize_task_type(task_type: str | None) -> TaskType:
     return "draft_letter"
 
 
+def _pasted_fir_letter_with_consumer_shopping_facts(user_input: str) -> bool:
+    """
+    draft uses SHO / FIR wording but facts are product/online order. Route and format as consumer, not police/FIR.
+    """
+    t = (user_input or "").strip()
+    if not t or len(t) < 30:
+        return False
+    if not re.search(
+        r"(?i)(station\s+house\s+officer|police\s+station\s+having|information\s+for\s+"
+        r"registration\s+of\s+fir|subject:.*\bfir\b)",
+        t,
+    ):
+        return False
+    if not re.search(
+        r"(?i)\b(online|e-?commerce|e[\s-]?com|bought|purchas|order|delivery|seller|"
+        r"defect|refund|return|warranty|product|phone|item|unfair|trade|consumer|"
+        r"₹|rupee|rupees)\b",
+        t,
+    ):
+        return False
+    return bool(
+        re.search(
+            r"(?i)\b(complaint|defect|refund|warranty|return|delivery|seller|unfair|late|amount)\b",
+            t,
+        )
+    )
+
+
+def _user_text_seeks_consumer_commission_filing(user_input: str) -> bool:
+    """
+    Heuristic: user wants a DCDRC/CPA complaint (not only a generic chat), even if task_type
+    is still default draft_letter in the client.
+    """
+    t = (user_input or "").strip()
+    if not t:
+        return False
+    if _consumer_cpa_retail_purchase_dispute(t):
+        return True
+    if _pasted_fir_letter_with_consumer_shopping_facts(t):
+        return True
+    if re.search(
+        r"consumer\s+complaint|file\s+a\s+consumer|filing\s+a\s+consumer|"
+        r"district\s+consumer|dcdrc|ncdrc|under\s+consumer\s+protection|commission\s+complaint|"
+        r"edaa?khil|consumer\s+dispute",
+        t,
+        re.I,
+    ) and re.search(
+        r"\b(online|bought|purchas|defect|refund|return|warranty|seller|delivery|product|goods?|"
+        r"₹|rupees?|order|late|item|phone)\b",
+        t,
+        re.I,
+    ):
+        return True
+    if re.search(
+        r"\b(online|e-?com|e[\s-]?com|flipkart|amazon|meesho|app|website|seller|delivery|"
+        r"order|purchase|bought|portal)\b",
+        t,
+        re.I,
+    ) and re.search(
+        r"\b(defect|defective|refund|return|warranty|refus|deficiency|not\s+working|delay|late|broken|"
+        r"faulty|battery|dead|replac|repair)\b",
+        t,
+        re.I,
+    ) and re.search(
+        r"\b(complain|complaint|complaints|grievance|filing|forum|redress|remed(y|ies)|"
+        r"commission|legal\s+notice|replacement|application|help|improve|format|"
+        r"deficienc(?:y|ies)|unsatisfactory|wrong\s+item|damaged|late\s+deliver)\b",
+        t,
+        re.I,
+    ):
+        return True
+    if re.search(
+        r"(?i)\b(improve|reformat|rewrite|draft|correct|format|enhance|better)\b.*\b(online|e-?com|"
+        r"purchas|order|seller|delivery|refund|warranty|return|product|phone|consumer)\b",
+        t,
+    ):
+        return True
+    if re.search(
+        r"(?i)\b(online|bought|purchas|order|delivery|seller|e-?commerce)\b",
+        t,
+    ) and re.search(r"(?i)\b(₹\s*[\d,]+|defect|refund|warranty|return|late|broken|battery)\b", t):
+        return True
+    return False
+
+
+def _effective_consumer_formatter_task_type(
+    user_input: str, task_type: TaskType, *, category: str
+) -> TaskType:
+    """Use consumer-commission instructions when the request or routing is consumer-oriented."""
+    if task_type == "consumer_complaint_filing":
+        return "consumer_complaint_filing"
+    if str(category or "").lower() == "consumer" and task_type in ("draft_letter", "draft_with_qa"):
+        return "consumer_complaint_filing"
+    if _user_text_seeks_consumer_commission_filing(user_input):
+        return "consumer_complaint_filing"
+    return task_type
+
+
+def apply_consumer_complaint_routing_override(
+    user_input: str,
+    task_type: TaskType,
+    taxonomy: LegalClassification,
+    classifier_meta: ClassifierMeta,
+) -> tuple[LegalClassification, ClassifierMeta, bool]:
+    """
+    When the user wants a consumer-commission (CPA) filing, re-align routing and meta so other
+    signals (e.g. “online” matched to cyber, hybrid flags) do not force a police / FIR path.
+    Triggers include explicit task type, free-text heuristics, and *consumer retail / purchase
+    dispute* phrasing from the classifier — that last bit is not “only e-commerce”; it is one of
+    several ways the same override applies to retail/remote purchase issues.
+    """
+    if task_type != "consumer_complaint_filing" and not _user_text_seeks_consumer_commission_filing(
+        user_input
+    ) and not _consumer_cpa_retail_purchase_dispute((user_input or "").strip()):
+        return taxonomy, classifier_meta, False
+    t = (user_input or "").strip()
+    csub = (
+        "defective_product"
+        if re.search(r"\b(defect|defective|warranty|refund|replace|return|goods?|product)\b", t, re.I)
+        else (
+            "service_deficiency"
+            if re.search(r"\b(service|delivery|delay|late|courier|shipment|order)\b", t, re.I)
+            else "consumer_general"
+        )
+    )
+    base: dict[str, object] = dict(classifier_meta)
+    base["domain"] = "consumer"
+    base["sub_type"] = csub
+    base["category"] = "consumer"
+    base["fine_intent"] = "consumer_issue"
+    base["router_intent"] = "consumer_issue"
+    base["confidence"] = max(0.9, float(classifier_meta.get("confidence") or 0.0))
+    base["confidence_score"] = max(0.9, float(classifier_meta.get("confidence_score") or 0.0))
+    base["is_hybrid"] = False
+    base["hybrid_police_primary"] = False
+    base["is_emergency"] = False
+    base["phase6_priority"] = ""
+    new_tax: LegalClassification = {
+        "issue_type": "consumer",
+        "severity": "medium",
+        "jurisdiction_type": "state",
+        "sub_type": csub,
+    }
+    return new_tax, cast(ClassifierMeta, base), True
+
+
 def _task_type_formatter_addon(task_type: TaskType) -> str:
     """Sprint P2: branch formatter behaviour (prepended to strict_addon chain via system message tail)."""
     if task_type == "qa_only":
@@ -603,18 +898,40 @@ def _task_type_formatter_addon(task_type: TaskType) -> str:
         )
     if task_type == "consumer_complaint_filing":
         return (
-            "\n\n## TASK_TYPE = consumer_complaint_filing (mandatory)\n"
-            "- Prefer a filing-ready consumer complaint structure over a generic letter.\n"
-            "- **`document`** must include these titled sections (with concise placeholders where facts are missing):\n"
-            "  1) Forum caption (Before District Consumer Disputes Redressal Commission ...)\n"
-            "  2) Parties (Complainant and Opposite Party)\n"
-            "  3) Jurisdiction statement (territorial + pecuniary as alleged)\n"
-            "  4) Facts in chronological numbered points\n"
-            "  5) Deficiency / unfair practice grounds (plain language)\n"
-            "  6) Prayer / reliefs (itemized: repair/replace/refund/compensation/litigation costs)\n"
-            "  7) Interim relief line (if urgency alleged)\n"
-            "  8) Verification statement + place/date placeholders\n"
-            "- Keep tone professional and filing-oriented; avoid repetitive educational padding inside document.\n"
+            "\n\n## TASK_TYPE = consumer_complaint_filing (mandatory — overrides generic AUTHORITY_LOCK police/FIR defaults)\n"
+            "- The **`document` must be ONLY a District Consumer Commission (CPA) complaint** — not an \"information for FIR\" / "
+            "To-SHO letter. If **JURISDICTION_ROUTER_JSON** or **AUTHORITY_BLOCK_JSON** still mentions police, **ignore** "
+            "it for the **addressee and prayer**; consumer forum is primary for product defect / e-commerce / delay / "
+            "refund disputes.\n"
+            "- **Default layout (plain typewritten letter, print-friendly: no `**` markdown, no # headings):** follow this shape "
+            "closely; adapt facts from USER CONTEXT. Do **not** start with a hand-fill **## PRINT_FILL_HEADER** block; begin with "
+            "the forum address.\n"
+            "  • First lines: *To* / *The District Consumer Disputes Redressal Commission* (or copy forum line from **CONSUMER_FILING_TOOLKIT**), "
+            "then **[District Name]** and **[State]** on the next lines as placeholders if unknown.\n"
+            "  • **Subject:** a single factual subject line, e.g. *Complaint regarding [product/service] and [defect/denial of return/…]*\n"
+            "  • Salutation: *Respected Sir/Madam,*\n"
+            "  • Short paragraphs (not one wall of text): purchase and price; delay in delivery; defect discovered and when; "
+            "efforts to contact the seller; refusal; one line that this is **deficiency in service** and/or **unfair trade practice** "
+            "if those facts are alleged.\n"
+            "  • **Prayer:** *I request your kind intervention* to direct the opposite party to **refund** or **replace** (or both as "
+            "asked in USER CONTEXT), **suitable compensation** and **costs** as appropriate — numbers from the user (e.g. ₹) only, "
+            "not invented.\n"
+            "  • One line: annexures / documents (invoice, screen captures, etc.) *for your reference* or *as per list below* with placeholders; "
+            "use **## DOCUMENT_WHITESPACE** between major parts.\n"
+            "  • Closing: **Thanking you.** (or *Thanking you in anticipation.*) then **Yours sincerely,** (preferred over *Yours faithfully* "
+            "for this forum) then, each on its own line: **[Your Name]** or *Name: [Complainant]*, **[Address]**, **Mobile: […]**, "
+            "**[Date: DD/MM/YYYY]** (or *Date: […]*). That is the **only** end block needed — the app will not add a second duplicate "
+            "footer if you include these lines. Optional short **Verification** (place, date) is allowed before *Thanking you* only if the "
+            "user clearly wants a verified petition style.\n"
+            "- **Ground facts**: user-stated **₹** amounts, delay duration, days to defect, seller refusal — in prose or **numbered** "
+            "points; `[date not stated]` / `[DD/MM/YYYY]` only where the user was silent. Do not invent new figures.\n"
+            "- **Placeholders:** bracket style `[District]`, `₹____` or short underlines; **no** long blank runs; **one** end signature block as above.\n"
+            "- **Opposite party:** platform/seller as alleged, or: *Opposite Party: [e-commerce platform / seller — as per order/ invoice]*\n"
+            "- **Forbidden** in `document`: *The Station House Officer*, *information for registration of FIR* as the main application, "
+            "police diary phrasing, or a separate **## PRINT_FILL_FOOTER** repeat of the top hand-fill after *Yours sincerely* (no loose "
+            "*Date:/Name (complainant)…* after the closing; no *Official contact* (police) line).\n"
+            "- If **CONSUMER_FILING_TOOLKIT** is in the user message, align **prayer** lines with *prayer_items* / forum caption; keep tone professional, "
+            "not an academic essay.\n"
         )
     return ""
 
@@ -1136,23 +1453,136 @@ def _sanitize_garbled_police_station_line(text: str) -> str:
     return "\n".join(out)
 
 
-def _strip_police_only_contact_line_for_non_police(text: str, issue_type: str) -> str:
+def _strip_police_only_contact_line_for_non_police(
+    text: str, issue_type: str, *, category: str = ""
+) -> str:
     """
-    Keep police-only contact placeholder out of non-police drafts (e.g., land/revenue).
+    Remove police-station "official contact" handwriting line from non-police drafts
+    (land, revenue, consumer, etc.). Consumer category: strip even if `issue_type` was mis-tagged
+    as \"police\".
     """
-    if str(issue_type or "").strip().lower() == "police":
+    is_pol = str(issue_type or "").strip().lower() == "police"
+    if is_pol and str(category or "").strip().lower() != "consumer":
         return text
     out: list[str] = []
     for line in text.split("\n"):
         low = line.strip().lower()
-        if (
-            ("official contact to be noted by you" in low and ("chowki" in low or "station" in low))
-            or ("aadhikarik sampark" in low)
-            or ("आधिकारिक संपर्क" in low)
-        ):
+        if "official contact to be noted by you" in low:
+            continue
+        if "aadhikarik sampark" in low or "आधिकारिक संपर्क" in low:
             continue
         out.append(line)
     return "\n".join(out)
+
+
+def _is_handwrite_party_line(s: str) -> bool:
+    t = s.strip()
+    if not t:
+        return True
+    lo = t.lower()
+    if "complainant / applicant details" in lo and "details" in lo:
+        return True
+    if lo.startswith("date:") and len(t) < 130:
+        return True
+    if "name (complainant" in lo:
+        return True
+    if re.match(r"(?i)^name:\s*[\[_(/]", t):
+        return True
+    if re.match(r"(?i)^mobile( number)?:\s*[\[_(/0-9d]", t) and len(t) < 120:
+        return True
+    if re.match(r"(?i)^mobile( number)?:\s*$", t):
+        return True
+    if "full postal address" in lo or "poora postal" in lo:
+        return True
+    if re.match(r"(?i)^address:\s*[\[_(/]", t):
+        return True
+    if re.match(r"(?i)^full postal address:\s*[\[_(/]", t):
+        return True
+    if "official contact to be noted" in lo or "aadhikarik" in lo or "आधिकारिक" in t:
+        return True
+    if "police station contact (as displayed" in lo:
+        return True
+    if re.match(r"(?i)^city/district:\s*[\[_(/0-9a-z]", t):
+        return True
+    if re.match(r"(?i)^place:\s*[\[_(/0-9a-z]", t) and "verified" not in lo:
+        return True
+    if re.match(
+        r"(?i)^signature:\s*(_+|[\[]|\.{3,})",
+        t,
+    ):
+        return True
+    return False
+
+
+def _strip_repeated_handfill_after_letter_closing(text: str) -> str:
+    """
+    The model often repeats PRINT_FILL_HEADER lines after *Yours faithfully* right before
+    the single **Complainant / Applicant Details** block we append. Remove that loose tail
+    (hand-fill imitation only) so the bottom is not doubled.
+    """
+    lines = text.split("\n")
+    if not lines:
+        return text
+    close_idx: int | None = None
+    for j in range(len(lines) - 1, -1, -1):
+        s = lines[j].strip()
+        if re.match(
+            r"(?i)yours\s+(faithfully|sincerely|obediently|truly),?\s*$", s
+        ) or s.lower() in (
+            "yours faithfully,",
+            "yours sincerely,",
+        ):
+            close_idx = j
+            break
+    if close_idx is None:
+        return text
+    k = close_idx + 1
+    while k < len(lines) and not lines[k].strip():
+        k += 1
+    if k < len(lines):
+        n0 = lines[k].strip()
+        n0l = n0.lower()
+        if n0l.startswith("verif") or "solemn" in n0l or n0l.startswith("i declare "):
+            return text
+    if k >= len(lines):
+        return text
+    nxt = lines[k].strip()
+    nxtl = nxt.lower()
+    if nxtl in (
+        "complainant",
+        "complainant.",
+        "informant",
+        "informant.",
+        "applicant",
+        "applicant.",
+        "petitioner",
+        "petitioner.",
+    ):
+        k += 1
+        while k < len(lines) and not lines[k].strip():
+            k += 1
+    if k >= len(lines):
+        return "\n".join(lines[: close_idx + 1]).rstrip()
+    guard = lines[k].strip()
+    gdl = guard.lower()
+    if gdl.startswith("verif") or "solemn" in gdl or gdl.startswith("i declare "):
+        return text
+    if gdl == "(petitioner)" or (gdl.startswith("(") and "petition" in gdl):
+        return text
+    tail = lines[k:]
+    nonbl = [x for x in tail if x.strip()]
+    if not nonbl:
+        return text
+    if len(nonbl) == 1 and _is_handwrite_party_line(nonbl[0]):
+        return "\n".join(lines[:k]).rstrip()
+    if len(nonbl) < 2:
+        return text
+    for ln in tail:
+        if not ln.strip():
+            continue
+        if not _is_handwrite_party_line(ln):
+            return text
+    return "\n".join(lines[:k]).rstrip()
 
 
 def _strip_top_print_fill_block(text: str) -> str:
@@ -1225,8 +1655,46 @@ def _dedupe_consecutive_lines(text: str) -> str:
     return "\n".join(out)
 
 
-def _append_bottom_party_block(text: str, *, user_details: dict[str, str | None] | None, city: str | None, issue_type: str) -> str:
+def _consumer_letter_signoff_looks_complete(text: str) -> bool:
+    """
+    DCDRC-style letter already has *Yours sincerely* plus multiple signature placeholders —
+    do not append a second complainant table.
+    """
+    s = (text or "").strip()
+    if not s:
+        return False
+    lo = s.lower()
+    if "yours sincerely" not in lo and "yours faithfully" not in lo:
+        return False
+    i_s = lo.rfind("yours sincerely")
+    i_f = lo.rfind("yours faithfully")
+    idx = max(i_s, i_f)
+    if idx < 0:
+        return False
+    tail = s[idx:]
+    # E.g. [Your Name] [Address] [Mobile] [Date]
+    bracket_n = len(re.findall(r"\[[^\]]{1,120}\]", tail))
+    if bracket_n >= 2:
+        return True
+    if "thanking" in lo and bracket_n >= 1 and re.search(
+        r"(?i)name|address|mobile|date", tail
+    ):
+        return True
+    return False
+
+
+def _append_bottom_party_block(
+    text: str,
+    *,
+    user_details: dict[str, str | None] | None,
+    city: str | None,
+    issue_type: str,
+    category: str = "",
+) -> str:
     base = str(text or "")
+    is_consumer = str(issue_type or "").lower() == "consumer" or str(category or "").lower() == "consumer"
+    if is_consumer and _consumer_letter_signoff_looks_complete(base):
+        return base.rstrip()
     marker = "Complainant / Applicant Details"
     if marker in base:
         base = base.split(marker, 1)[0].rstrip()
@@ -1235,27 +1703,32 @@ def _append_bottom_party_block(text: str, *, user_details: dict[str, str | None]
     phone = (ud.get("phone") or "").strip() if isinstance(ud.get("phone"), str) else ""
     address = (ud.get("address") or "").strip() if isinstance(ud.get("address"), str) else ""
     city_v = (city or "").strip()
+    is_pol = str(issue_type or "").strip().lower() == "police" and str(category or "").strip().lower() != "consumer"
     lines = [
         "",
         "Complainant / Applicant Details",
-        f"Date: {'[DD/MM/YYYY]' }",
+        "Date: [DD/MM/YYYY]",
         f"Name: {name or '[Complainant / Applicant Name]'}",
         f"Mobile: {phone or '[Mobile Number]'}",
         f"Address: {address or '[Full Postal Address]'}",
         f"City/District: {city_v or '[City / District]'}",
         f"Place: {city_v or '[Place]'}",
     ]
-    if str(issue_type or "").strip().lower() == "police":
+    if is_pol:
         lines.append("Police Station Contact (as displayed on official board/portal): [To be filled]")
     lines.append("Signature: ________________________________")
     return base.strip() + "\n\n" + "\n".join(lines).strip()
 
 
-def _normalize_document_spacing(text: str, *, issue_type: str = "") -> str:
+def _normalize_document_spacing(
+    text: str, *, issue_type: str = "", category: str = ""
+) -> str:
     text = _strip_accidental_json_document(text)
     text = re.sub(r"\r\n", "\n", text)
     text = _sanitize_garbled_police_station_line(text)
-    text = _strip_police_only_contact_line_for_non_police(text, issue_type=issue_type)
+    text = _strip_police_only_contact_line_for_non_police(
+        text, issue_type=issue_type, category=category
+    )
     text = re.sub(r"\n{3,}", "\n\n", text)
     return text.strip()
 
@@ -1266,13 +1739,21 @@ def _postprocess_document(
     issue_type: str,
     user_details: dict[str, str | None] | None,
     city: str | None,
+    category: str = "",
 ) -> str:
-    out = _normalize_document_spacing(text, issue_type=issue_type)
+    out = _normalize_document_spacing(text, issue_type=issue_type, category=category)
     out = _strip_top_print_fill_block(out)
+    out = _strip_repeated_handfill_after_letter_closing(out)
     out = _strip_markdown_artifacts(out)
     out = _dedupe_consecutive_lines(out)
     out = re.sub(r"\n{3,}", "\n\n", out).strip()
-    return _append_bottom_party_block(out, user_details=user_details, city=city, issue_type=issue_type)
+    return _append_bottom_party_block(
+        out,
+        user_details=user_details,
+        city=city,
+        issue_type=issue_type,
+        category=category,
+    )
 
 
 def _has_hard_emergency_signal(user_input: str) -> bool:
@@ -1422,7 +1903,17 @@ def generate_legal_response(
         classifier_meta = _intent_prefetch.classifier_meta
         multi_intent_result = _intent_prefetch.multi_intent_result
         issue_profile = _intent_prefetch.issue_profile
-        taxonomy_ui = _intent_prefetch.taxonomy_ui
+        taxonomy, classifier_meta, _co_pref = apply_consumer_complaint_routing_override(
+            user_input, task_type_n, taxonomy, classifier_meta
+        )
+        if _co_pref:
+            issue_profile = classify_issue_enriched(user_input, taxonomy, classifier_meta)
+        taxonomy_ui = {
+            "issue_type": taxonomy["issue_type"],
+            "severity": _as_severity(str(issue_profile.get("severity") or taxonomy["severity"])),
+            "jurisdiction_type": taxonomy["jurisdiction_type"],
+            "sub_type": taxonomy.get("sub_type") or "unspecified",
+        }
     else:
         interpretation, taxonomy, classifier_meta = classify_intent_pipeline(user_input, city=city)
         multi_intent_result = detect_multi_intent(user_input, taxonomy, classifier_meta)
@@ -1437,6 +1928,9 @@ def generate_legal_response(
         )
         taxonomy, classifier_meta = apply_law_and_order_land_hybrid_merge(
             user_input.strip(), taxonomy, classifier_meta
+        )
+        taxonomy, classifier_meta, _ = apply_consumer_complaint_routing_override(
+            user_input, task_type_n, taxonomy, classifier_meta
         )
         issue_profile = classify_issue_enriched(user_input, taxonomy, classifier_meta)
         taxonomy_ui = {
@@ -1527,6 +2021,7 @@ def generate_legal_response(
     _crisis_triage = crisis_triage_lock(
         classifier_meta, taxonomy_ui, user_input=(user_input or "").strip() or None
     )
+    _followup_escalation = is_police_complaint_followup_escalation((user_input or "").strip())
     if _crisis_triage:
         companion = build_crisis_triage_companion_payload(authority_block=authority_block)
     else:
@@ -1798,16 +2293,59 @@ def generate_legal_response(
                 "offences (use placeholders for IPC/BNSS section numbers if unknown). Match the tone to the "
                 "gravity of harm to public property or a police installation.\n"
             )
+        followup_police_inaction_addon = ""
+        if _followup_escalation:
+            followup_police_inaction_addon = (
+                "\n\n---\nPOLICE_FOLLOWUP_INACTION (mandatory — complaint already filed; police delay or no action):\n"
+                "The user reports they **already submitted** a complaint to police and now describe **inaction, delay, or no "
+                "meaningful progress** — not a brand-new incident only.\n"
+                "In `document`, draft a **follow-up / reminder / supervisory representation** (to the **same SHO** for a "
+                "written reminder, or to **SP office** for escalation, as fits the facts). State that a complaint was "
+                "already lodged (use placeholders for diary/FIR number if unknown). Ask for **expeditious steps**, "
+                "**reasons in writing** if refusal is alleged, or **status update** — not wording that implies they have "
+                "**never** approached the police.\n"
+                "Do **not** centre the narrative only on *register a fresh FIR* unless the facts support a distinct new "
+                "cognizable offence; align with **follow-up after prior complaint**.\n"
+                "In `next_steps`, emphasize **documenting dates**, **station diary / copy requests**, **SP representation**, "
+                "and consulting an advocate for **judicial routes** where applicable; **do not** treat this as an ERSS/112 "
+                "emergency unless the user describes **immediate danger right now**.\n"
+            )
         authority_format_addon = (
             "\n\n---\nFINAL_FORMAT_VALIDATION (mandatory):\n"
-            "1) Detect the authority from AUTHORITY_BLOCK_JSON / JURISDICTION_ROUTER_JSON first; do not mix authority formats.\n"
+            "1) Detect the authority from AUTHORITY_BLOCK_JSON / JURISDICTION_ROUTER_JSON first; do not mix authority formats. "
+            "Exception: if **DETERMINISTIC_CLASSIFIER_META.category** is `consumer` or **CONSUMER_FILING_TOOLKIT** is present, the "
+            "`document` is a **Consumer Disputes Redressal Commission** complaint (CPA) — not To-SHO / not FIR, "
+            "even if secondary text mentions police/cyber portals.\n"
             "2) Keep document plain text, left-aligned, print-friendly. No markdown headings, bold markers, or decorative styling.\n"
             "3) Convert user narrative into clear, numbered factual sequence (date/place/parties/issue).\n"
             "4) Auto-use available user/location details where known; keep placeholders for missing values.\n"
-            "5) Include only authority-relevant sections (police FIR prayer OR consumer prayer OR court relief) — not all at once.\n"
+            "5) Include only authority-relevant sections (police FIR prayer OR consumer prayer OR court relief) — not all at once. "
+            "If **CONSUMER_FILING_TOOLKIT** is present in the user message, the document is a **Consumer Commission** complaint, "
+            "not a police FIR, unless the user explicitly and primarily reports a cognizable crime with no product dispute.\n"
             "6) Remove duplicated lines and keep tone consistent, concise, and professional.\n"
             "7) Do NOT start with top 'Print & fill' lines.\n"
         )
+        fmt_task_type: TaskType = _effective_consumer_formatter_task_type(
+            str(user_input).strip(),
+            task_type_n,
+            category=str(classifier_meta.get("category") or ""),
+        )
+        consumer_filing_inject = ""
+        if fmt_task_type == "consumer_complaint_filing":
+            _cfcat = str(classifier_meta.get("category") or "consumer")
+            consumer_filing_inject = (
+                "\n\n---\nCONSUMER_FILING_TOOLKIT (use forum caption, prayers, and annexure hints; CPA complaint, not police/FIR):\n"
+                + json.dumps(
+                    _build_consumer_filing_blocks(
+                        user_input=str(user_input).strip(),
+                        category=_cfcat,
+                        task_type="consumer_complaint_filing",
+                        authority_primary=str(router_result.get("primary_authority") or ""),
+                        city=city if isinstance(city, str) else None,
+                    ),
+                    ensure_ascii=False,
+                )
+            )
         user_message = (
             f"{_build_user_blob(user_input, user_details)}\n\n"
             f"---\nLEGAL_CLASSIFICATION (taxonomy):\n{classification_json}\n\n"
@@ -1819,12 +2357,13 @@ def generate_legal_response(
             f"---\nJURISDICTION_ROUTER_JSON:\n{jurisdiction_router_json}\n\n"
             f"---\nLEGAL_COMPANION_JSON:\n{companion_json}\n\n"
             f"---\nAUTHORITY_BLOCK_JSON:\n{authority_json}\n"
-            f"{hybrid_instruction}{crisis_formatter_addon}{authority_format_addon}"
+            f"{consumer_filing_inject}{hybrid_instruction}{crisis_formatter_addon}"
+            f"{followup_police_inaction_addon}{authority_format_addon}"
         )
 
         client = OpenAI(api_key=settings.openai_api_key)
         lang_addon = _formatter_language_addon(response_language)
-        task_type_addon = _task_type_formatter_addon(task_type_n)
+        task_type_addon = _task_type_formatter_addon(fmt_task_type)
 
         try:
             data = _run_formatter(
@@ -1851,10 +2390,15 @@ def generate_legal_response(
         )
         if not ok:
             try:
+                _ap_strict = (
+                    ""
+                    if fmt_task_type == "consumer_complaint_filing"
+                    else STRICT_REGEN_ADDON
+                )
                 data = _run_formatter(
                     client,
                     user_message,
-                    strict_addon=STRICT_REGEN_ADDON,
+                    strict_addon=_ap_strict,
                     language_addon=lang_addon,
                     task_type_addon=task_type_addon,
                 )
@@ -1873,7 +2417,7 @@ def generate_legal_response(
             )
         except Exception:
             pass
-        if should_regenerate(gen_score):
+        if should_regenerate(gen_score) and fmt_task_type != "consumer_complaint_filing":
             try:
                 data = _run_formatter(
                     client,
@@ -1904,6 +2448,18 @@ def generate_legal_response(
             authority_block=authority_block,
             language_addon=lang_addon,
             task_type_addon=task_type_addon,
+        )
+        _regenerate_mismatching_sho_as_consumer_draft(
+            client,
+            user_message,
+            _alignment_bundle,
+            user_input=str(user_input).strip(),
+            task_type_n=task_type_n,
+            city=city if isinstance(city, str) else None,
+            classifier_meta=classifier_meta,
+            taxonomy_ui=taxonomy_ui,
+            language_addon=lang_addon,
+            router_result=router_result,
         )
         document = str(_alignment_bundle.get("document") or "")
         explanation = str(_alignment_bundle.get("explanation") or "")
@@ -1946,12 +2502,15 @@ def generate_legal_response(
         if use_emergency_template and alert
         else (
             "⚠️ Urgent Action Required"
-            if issue_profile.get("urgency") == "high"
-            or issue_profile.get("intent") == "emergency"
-            or urgent_banner_meta
-            or (
-                str(taxonomy_ui.get("issue_type") or "") == "fraud"
-                and str(taxonomy_ui.get("severity") or "") == "high"
+            if not _followup_escalation
+            and (
+                issue_profile.get("urgency") == "high"
+                or issue_profile.get("intent") == "emergency"
+                or urgent_banner_meta
+                or (
+                    str(taxonomy_ui.get("issue_type") or "") == "fraud"
+                    and str(taxonomy_ui.get("severity") or "") == "high"
+                )
             )
             else None
         )
@@ -1995,11 +2554,17 @@ def generate_legal_response(
     )
     if use_emergency_template and not _emergency_cats:
         _emergency_cats = ["unified_emergency", "police", "ambulance"]
-    elif str(classifier_meta.get("phase6_priority") or "") == "law_and_order" and not _emergency_cats:
+    elif (
+        str(classifier_meta.get("phase6_priority") or "") == "law_and_order"
+        and not _emergency_cats
+        and not _followup_escalation
+    ):
         _emergency_cats = ["unified_emergency", "police"]
+    if _followup_escalation and not use_emergency_template:
+        _emergency_cats = []
     _include_emergency_block = bool(
         use_emergency_template
-        or str(classifier_meta.get("phase6_priority") or "") == "law_and_order"
+        or (not _followup_escalation and str(classifier_meta.get("phase6_priority") or "") == "law_and_order")
         or bool(_emergency_cats)
     )
     emergency_contacts: list[dict[str, Any]] = []
@@ -2076,11 +2641,13 @@ def generate_legal_response(
     )
 
     _issue_type = str(taxonomy_ui.get("issue_type") or "")
+    _classifier_category = str(classifier_meta.get("category") or "")
     doc_final = _postprocess_document(
         str(document),
         issue_type=_issue_type,
         user_details=user_details,
         city=city if isinstance(city, str) else None,
+        category=_classifier_category,
     )
     still_bad_align, _ = document_violates_authority_alignment(
         doc_final,
@@ -2177,6 +2744,7 @@ def generate_legal_response(
                     issue_type=_issue_type,
                     user_details=user_details,
                     city=city if isinstance(city, str) else None,
+                    category=_classifier_category,
                 )
         except Exception:
             document_evaluator_out = None
@@ -2185,10 +2753,15 @@ def generate_legal_response(
     case_law_out = search_case_law_references(
         str(user_input).strip(), client_mode=str(client_mode or "citizen")
     )
+    filing_task: TaskType = _effective_consumer_formatter_task_type(
+        str(user_input).strip(),
+        task_type_n,
+        category=str(classifier_meta.get("category") or ""),
+    )
     filing_blocks = _build_consumer_filing_blocks(
         user_input=str(user_input).strip(),
         category=str(classifier_meta.get("category") or ""),
-        task_type=task_type_n,
+        task_type=filing_task,
         authority_primary=str(router_result.get("primary_authority") or ""),
         city=city if isinstance(city, str) else None,
     )

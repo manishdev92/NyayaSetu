@@ -287,6 +287,7 @@ class CaseLawReferenceOut(BaseModel):
     source: str = ""
     url: str = ""
     snippet: str = ""
+    relevance_reason: str = ""
 
 
 class GenerateResponse(BaseModel):

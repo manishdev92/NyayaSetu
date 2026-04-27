@@ -147,6 +147,7 @@ export type CaseLawReference = {
   source: string;
   url: string;
   snippet: string;
+  relevance_reason?: string;
 };
 
 export type GenerateResponse = {
@@ -475,6 +476,11 @@ export type PublicConfig = {
   /** Same cap as `POST /ingest-document` (and generate attachments); see `app.config.settings`. */
   max_upload_bytes: number;
   daily_limit_authenticated: number;
+  /** Higher daily cap during the trial window after first sign-in activity (server). */
+  daily_limit_trial: number;
+  trial_period_days: number;
+  /** Product positioning for the post-trial base tier (INR); payment may not be enforced yet. */
+  base_tier_price_inr: number;
   daily_limit_pro: number;
   /** `none` | `openai` | `textract` | `tesseract` — see `backend/docs/OCR_AND_AWS.md`. */
   ingest_ocr_provider: "none" | "openai" | "textract" | "tesseract";
@@ -500,6 +506,28 @@ export type BillingEntitlements = {
   pro: boolean;
   subscription_status: string | null;
   daily_limit: number;
+  in_trial?: boolean;
+  trial_ends_at_utc?: string | null;
+  base_tier_price_inr?: number;
+};
+
+export type ResponseFeedbackPayload = {
+  helpful: boolean;
+  client_mode: "citizen" | "lawyer";
+  task_type: GenerateTaskType;
+  locale?: "en" | "hi" | "hiLatn";
+  generation_mode?: string | null;
+  userId?: string | null;
+};
+
+export type ResponseFeedbackSummary = {
+  days: number;
+  total: number;
+  positive: number;
+  positive_rate: number;
+  by_mode: Array<{ client_mode: "citizen" | "lawyer" | string; total: number; positive: number }>;
+  by_task_type: Array<{ task_type: string; total: number; positive: number }>;
+  by_day: Array<{ day: string; total: number; positive: number }>;
 };
 
 export async function fetchPublicConfig(): Promise<PublicConfig | null> {
@@ -517,6 +545,9 @@ export async function fetchPublicConfig(): Promise<PublicConfig | null> {
         ? Math.floor(mub)
         : 2_000_000;
     const dla = j.daily_limit_authenticated;
+    const dlt = j.daily_limit_trial;
+    const tpd = j.trial_period_days;
+    const btpi = j.base_tier_price_inr;
     const dlp = j.daily_limit_pro;
     const ocrRaw = j.ingest_ocr_provider;
     const ocrProv =
@@ -533,7 +564,13 @@ export async function fetchPublicConfig(): Promise<PublicConfig | null> {
       rag_vector_store: rvs === "pinecone" || rvs === "local" ? rvs : "local",
       max_upload_bytes,
       daily_limit_authenticated:
-        typeof dla === "number" && Number.isFinite(dla) && dla > 0 ? Math.floor(dla) : 50,
+        typeof dla === "number" && Number.isFinite(dla) && dla > 0 ? Math.floor(dla) : 10,
+      daily_limit_trial:
+        typeof dlt === "number" && Number.isFinite(dlt) && dlt > 0 ? Math.floor(dlt) : 50,
+      trial_period_days:
+        typeof tpd === "number" && Number.isFinite(tpd) && tpd >= 0 ? Math.floor(tpd) : 7,
+      base_tier_price_inr:
+        typeof btpi === "number" && Number.isFinite(btpi) && btpi >= 0 ? Math.floor(btpi) : 1,
       daily_limit_pro: typeof dlp === "number" && Number.isFinite(dlp) && dlp > 0 ? Math.floor(dlp) : 500,
       ingest_ocr_provider: ocrProv,
       ingest_ocr_ready: j.ingest_ocr_ready === true,
@@ -571,7 +608,97 @@ export async function fetchBillingEntitlements(userId: string | null): Promise<B
     return {
       pro: j.pro === true,
       subscription_status: typeof j.subscription_status === "string" ? j.subscription_status : null,
-      daily_limit: typeof j.daily_limit === "number" && Number.isFinite(j.daily_limit) ? Math.floor(j.daily_limit) : 50,
+      daily_limit: typeof j.daily_limit === "number" && Number.isFinite(j.daily_limit) ? Math.floor(j.daily_limit) : 10,
+      in_trial: j.in_trial === true,
+      trial_ends_at_utc: typeof j.trial_ends_at_utc === "string" ? j.trial_ends_at_utc : null,
+      base_tier_price_inr:
+        typeof j.base_tier_price_inr === "number" && Number.isFinite(j.base_tier_price_inr)
+          ? Math.floor(j.base_tier_price_inr)
+          : undefined,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** POST `/feedback/response` — lightweight thumbs feedback for UX analytics. */
+export async function postResponseFeedback(payload: ResponseFeedbackPayload): Promise<boolean> {
+  try {
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (payload.userId) headers["X-User-Id"] = payload.userId;
+    const res = await fetch(`${getBaseUrl()}/feedback/response`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        helpful: payload.helpful,
+        client_mode: payload.client_mode,
+        task_type: payload.task_type,
+        locale: payload.locale,
+        generation_mode: payload.generation_mode,
+      }),
+    });
+    if (!res.ok) return false;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** GET `/feedback/summary` — aggregate thumbs feedback in rolling-day window. */
+export async function fetchResponseFeedbackSummary(days = 30): Promise<ResponseFeedbackSummary | null> {
+  try {
+    const d = Number.isFinite(days) ? Math.max(1, Math.min(365, Math.floor(days))) : 30;
+    const res = await fetch(`${getBaseUrl()}/feedback/summary?days=${d}`, {
+      method: "GET",
+      cache: "no-store",
+    });
+    if (!res.ok) return null;
+    const j = (await res.json()) as Record<string, unknown>;
+    return {
+      days: typeof j.days === "number" && Number.isFinite(j.days) ? Math.floor(j.days) : d,
+      total: typeof j.total === "number" && Number.isFinite(j.total) ? Math.floor(j.total) : 0,
+      positive: typeof j.positive === "number" && Number.isFinite(j.positive) ? Math.floor(j.positive) : 0,
+      positive_rate:
+        typeof j.positive_rate === "number" && Number.isFinite(j.positive_rate) ? j.positive_rate : 0,
+      by_mode: Array.isArray(j.by_mode)
+        ? j.by_mode
+            .filter((x) => x && typeof x === "object")
+            .map((x) => {
+              const o = x as Record<string, unknown>;
+              return {
+                client_mode: typeof o.client_mode === "string" ? o.client_mode : "citizen",
+                total: typeof o.total === "number" && Number.isFinite(o.total) ? Math.floor(o.total) : 0,
+                positive:
+                  typeof o.positive === "number" && Number.isFinite(o.positive) ? Math.floor(o.positive) : 0,
+              };
+            })
+        : [],
+      by_task_type: Array.isArray(j.by_task_type)
+        ? j.by_task_type
+            .filter((x) => x && typeof x === "object")
+            .map((x) => {
+              const o = x as Record<string, unknown>;
+              return {
+                task_type: typeof o.task_type === "string" ? o.task_type : "",
+                total: typeof o.total === "number" && Number.isFinite(o.total) ? Math.floor(o.total) : 0,
+                positive:
+                  typeof o.positive === "number" && Number.isFinite(o.positive) ? Math.floor(o.positive) : 0,
+              };
+            })
+        : [],
+      by_day: Array.isArray(j.by_day)
+        ? j.by_day
+            .filter((x) => x && typeof x === "object")
+            .map((x) => {
+              const o = x as Record<string, unknown>;
+              return {
+                day: typeof o.day === "string" ? o.day : "",
+                total: typeof o.total === "number" && Number.isFinite(o.total) ? Math.floor(o.total) : 0,
+                positive:
+                  typeof o.positive === "number" && Number.isFinite(o.positive) ? Math.floor(o.positive) : 0,
+              };
+            })
+        : [],
     };
   } catch {
     return null;
@@ -604,10 +731,6 @@ function parseErrorPayload(data: unknown): { message: string; errorCode?: string
     };
   }
   return { message: "Request failed" };
-}
-
-function parseErrorDetail(data: unknown): string {
-  return parseErrorPayload(data).message;
 }
 
 function normalizeDocumentFromServer(raw: string): string {
@@ -986,6 +1109,7 @@ export function mapServerJsonToGenerateResponse(data: unknown): GenerateResponse
             source: typeof o.source === "string" ? o.source : "",
             url: typeof o.url === "string" ? o.url : "",
             snippet: typeof o.snippet === "string" ? o.snippet : "",
+            relevance_reason: typeof o.relevance_reason === "string" ? o.relevance_reason : "",
           };
         })
     : undefined;
@@ -1093,7 +1217,12 @@ export async function generateLegalResponse(payload: GenerateRequestPayload): Pr
   if (payload.client_mode === "lawyer" || payload.client_mode === "citizen") {
     body.client_mode = payload.client_mode;
   }
-  if (payload.task_type === "qa_only" || payload.task_type === "draft_with_qa" || payload.task_type === "draft_letter") {
+  if (
+    payload.task_type === "qa_only" ||
+    payload.task_type === "draft_with_qa" ||
+    payload.task_type === "draft_letter" ||
+    payload.task_type === "consumer_complaint_filing"
+  ) {
     body.task_type = payload.task_type;
   }
 
@@ -1264,7 +1393,12 @@ export async function streamGenerateLegalResponse(
   if (payload.client_mode === "lawyer" || payload.client_mode === "citizen") {
     body.client_mode = payload.client_mode;
   }
-  if (payload.task_type === "qa_only" || payload.task_type === "draft_with_qa" || payload.task_type === "draft_letter") {
+  if (
+    payload.task_type === "qa_only" ||
+    payload.task_type === "draft_with_qa" ||
+    payload.task_type === "draft_letter" ||
+    payload.task_type === "consumer_complaint_filing"
+  ) {
     body.task_type = payload.task_type;
   }
 
@@ -1436,4 +1570,108 @@ export async function deleteDashboardCase(userId: string, caseId: string): Promi
     const p = parseErrorPayload(data);
     throw new ServerApiError(p.message, res.status, p.errorCode);
   }
+}
+
+/** Signed-in chat history (`/chat/threads`) — Clerk user via `X-User-Id`. */
+export type ChatThreadSummary = {
+  id: string;
+  title: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ChatHistoryMessage = {
+  id: string;
+  thread_id: string;
+  role: "user" | "assistant";
+  content: string;
+  meta: Record<string, unknown> | null;
+  created_at: string;
+};
+
+export async function fetchChatThreads(userId: string, limit = 50): Promise<ChatThreadSummary[]> {
+  const res = await fetch(`${getBaseUrl()}/chat/threads?limit=${limit}`, {
+    method: "GET",
+    cache: "no-store",
+    headers: { "X-User-Id": userId },
+  });
+  const data: unknown = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const p = parseErrorPayload(data);
+    throw new ServerApiError(p.message, res.status, p.errorCode);
+  }
+  const j = data as { threads?: unknown };
+  if (!Array.isArray(j.threads)) return [];
+  return j.threads as ChatThreadSummary[];
+}
+
+export async function createChatThread(userId: string, title?: string): Promise<ChatThreadSummary> {
+  const res = await fetch(`${getBaseUrl()}/chat/threads`, {
+    method: "POST",
+    cache: "no-store",
+    headers: { "X-User-Id": userId, "Content-Type": "application/json" },
+    body: JSON.stringify({ title: title ?? undefined }),
+  });
+  const data: unknown = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const p = parseErrorPayload(data);
+    throw new ServerApiError(p.message, res.status, p.errorCode);
+  }
+  return data as ChatThreadSummary;
+}
+
+export async function patchChatThreadTitle(userId: string, threadId: string, title: string): Promise<void> {
+  const res = await fetch(`${getBaseUrl()}/chat/threads/${encodeURIComponent(threadId)}`, {
+    method: "PATCH",
+    cache: "no-store",
+    headers: { "X-User-Id": userId, "Content-Type": "application/json" },
+    body: JSON.stringify({ title }),
+  });
+  const data: unknown = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const p = parseErrorPayload(data);
+    throw new ServerApiError(p.message, res.status, p.errorCode);
+  }
+}
+
+export async function fetchThreadMessages(userId: string, threadId: string, limit = 500): Promise<ChatHistoryMessage[]> {
+  const res = await fetch(
+    `${getBaseUrl()}/chat/threads/${encodeURIComponent(threadId)}/messages?limit=${limit}`,
+    {
+      method: "GET",
+      cache: "no-store",
+      headers: { "X-User-Id": userId },
+    },
+  );
+  const data: unknown = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const p = parseErrorPayload(data);
+    throw new ServerApiError(p.message, res.status, p.errorCode);
+  }
+  const j = data as { messages?: unknown };
+  if (!Array.isArray(j.messages)) return [];
+  return j.messages as ChatHistoryMessage[];
+}
+
+export async function postChatMessage(
+  userId: string,
+  threadId: string,
+  body: { role: "user" | "assistant"; content: string; meta?: Record<string, unknown> },
+): Promise<ChatHistoryMessage> {
+  const res = await fetch(`${getBaseUrl()}/chat/threads/${encodeURIComponent(threadId)}/messages`, {
+    method: "POST",
+    cache: "no-store",
+    headers: { "X-User-Id": userId, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      role: body.role,
+      content: body.content,
+      meta: body.meta,
+    }),
+  });
+  const data: unknown = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const p = parseErrorPayload(data);
+    throw new ServerApiError(p.message, res.status, p.errorCode);
+  }
+  return data as ChatHistoryMessage;
 }
