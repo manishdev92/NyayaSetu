@@ -97,8 +97,19 @@ variable "create_cloudfront_web" {
 
 variable "web_app_public_url" {
   type        = string
-  description = "Public site URL (https://) — use CloudFront URL so Next.js metadata/redirects match the browser. Baked in Docker as NEXT_PUBLIC_APP_URL; set to terraform output web_cloudfront_url after the first apply."
+  description = "Public site URL (https://) when not using web_custom_domain — usually CloudFront https://dxxxx.cloudfront.net. Ignored when web_custom_domain is set (effective URL becomes https://<domain>)."
   default     = ""
+}
+
+variable "web_custom_domain" {
+  type        = string
+  description = "Optional apex hostname without scheme, e.g. nyayasetu.in. Requires a Route 53 public hosted zone for that name in this account, ACM DNS validation, and CloudFront aliases. See docs/CUSTOM_DOMAIN_IN.md."
+  default     = ""
+
+  validation {
+    condition     = var.web_custom_domain == "" || can(regex("^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$", trimspace(var.web_custom_domain)))
+    error_message = "web_custom_domain must be empty or a valid hostname (e.g. nyayasetu.in) without https://."
+  }
 }
 
 variable "ingest_corpus_bucket_name" {

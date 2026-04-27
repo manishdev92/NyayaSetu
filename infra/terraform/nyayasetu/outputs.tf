@@ -71,3 +71,13 @@ output "web_cloudfront_url" {
   description = "HTTPS URL to open the site via CloudFront (before a custom domain)."
   value       = length(aws_cloudfront_distribution.web) > 0 ? "https://${aws_cloudfront_distribution.web[0].domain_name}" : null
 }
+
+output "effective_web_app_public_url" {
+  description = "URL used for NEXT_PUBLIC_APP_URL / CORS — custom domain (https://nyayasetu.in) when web_custom_domain is set, else web_app_public_url."
+  value       = local.effective_web_app_public_url != "" ? local.effective_web_app_public_url : null
+}
+
+output "web_custom_domain" {
+  description = "Apex hostname when custom domain is enabled (empty otherwise)."
+  value       = local.use_custom_web_domain ? trimspace(var.web_custom_domain) : null
+}

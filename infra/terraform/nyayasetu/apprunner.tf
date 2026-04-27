@@ -2,9 +2,12 @@ locals {
   api_image = "${module.ecr.api_repository_url}:latest"
   web_image = "${module.ecr.web_repository_url}:latest"
   # Browsers on CloudFront send Origin: https://<id>.cloudfront.net — include it so API CORS allows the app.
+  # Use effective_web_app_public_url (locals.tf): custom domain https://nyayasetu.in or legacy CloudFront URL.
   api_cors_origins = join(
     ",",
-    var.web_app_public_url != "" ? ["http://localhost:3000", var.web_app_public_url] : ["http://localhost:3000"]
+    local.effective_web_app_public_url != ""
+    ? ["http://localhost:3000", local.effective_web_app_public_url]
+    : ["http://localhost:3000"]
   )
   # Runtime (server) sees App Runner host; this aligns env with the URL users & Clerk should use (e.g. CloudFront).
   web_app_runtime_env = merge(
@@ -13,7 +16,7 @@ locals {
       NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY = var.clerk_publishable_key
       CLERK_SECRET_KEY                  = var.clerk_secret_key
     },
-    var.web_app_public_url != "" ? { NEXT_PUBLIC_APP_URL = var.web_app_public_url } : {}
+    local.effective_web_app_public_url != "" ? { NEXT_PUBLIC_APP_URL = local.effective_web_app_public_url } : {}
   )
 }
 

@@ -164,7 +164,7 @@ Terraform in **`nyayasetu`** is configured to use the **[S3 backend](https://dev
 | **Secret** | `NEXT_PUBLIC_API_URL` | **Deploy** (web build) | `terraform output -raw api_public_url` (HTTPS, no trailing slash) |
 | **Secret** | `AWS_TERRAFORM_DESTROY_ROLE_ARN` | **Destroy** | `terraform output -raw github_terraform_destroy_role_arn` after the role exists in state |
 | **Variable** (opt.) | `AWS_REGION` | **Deploy** / **Destroy** | e.g. `ap-south-1` if not defaulting in the workflow |
-| **Variable** (opt.) | `WEB_APP_PUBLIC_URL` | **Deploy** | `terraform output -raw web_cloudfront_url` or your custom `https://` app URL; baked as `NEXT_PUBLIC_APP_URL` |
+| **Variable** (opt.) | `WEB_APP_PUBLIC_URL` | **Deploy** | After custom domain: `terraform output -raw effective_web_app_public_url` (e.g. `https://nyayasetu.in`) or CloudFront URL; baked as `NEXT_PUBLIC_APP_URL` |
 | **Variable** | `TERRAFORM_S3_STATE_BUCKET` | **Destroy** | Same S3 bucket name as in `backend.s3.hcl` |
 | **Variable** (opt.) | `TERRAFORM_S3_STATE_KEY` | **Destroy** | Default `nyayasetu/terraform.tfstate` if unset |
 | **Variable** (opt.) | `TERRAFORM_S3_STATE_REGION` | **Destroy** | State **bucket** region if different from the stack’s `AWS_REGION` / CLI default |
@@ -227,7 +227,9 @@ Match `TF_VAR_create_github_oidc_provider` to your last successful apply. After 
 
 ## Custom domain (optional)
 
-Use **ACM (public) in us-east-1** for **CloudFront**, add **CNAME/alias** in your DNS (e.g. Hostinger) for `app.yourdomain.com` → CloudFront, set **Alternate domain** + certificate on the distribution, then set **`web_app_public_url`**, `WEB_APP_PUBLIC_URL`, and API **CORS** as needed. See the longer discussion in the main [DEPLOYMENT_AWS](../docs/DEPLOYMENT_AWS.md) doc and in-repo comments on `cloudfront_web.tf`.  
+**Terraform-managed `.in` (Route 53 + ACM + CloudFront)** is documented step by step in **[CUSTOM_DOMAIN_IN.md](../docs/CUSTOM_DOMAIN_IN.md)** — set **`web_custom_domain`** (e.g. `nyayasetu.in`), ensure a **public hosted zone** exists, then **`terraform apply`**. Outputs include **`effective_web_app_public_url`**.  
+
+Also set GitHub **`WEB_APP_PUBLIC_URL`**, Clerk domains, and see [DEPLOYMENT_AWS](../docs/DEPLOYMENT_AWS.md) Phase 9.
 
 ---
 

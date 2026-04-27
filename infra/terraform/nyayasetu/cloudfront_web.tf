@@ -15,6 +15,8 @@ resource "aws_cloudfront_distribution" "web" {
   comment = "NyayaSetu web (App Runner origin ap-south-1)"
   enabled = true
 
+  aliases = local.use_custom_web_domain ? [trimspace(var.web_custom_domain), "www.${trimspace(var.web_custom_domain)}"] : []
+
   is_ipv6_enabled     = true
   price_class         = "PriceClass_200"
   wait_for_deployment = true
@@ -54,7 +56,11 @@ resource "aws_cloudfront_distribution" "web" {
   }
 
   viewer_certificate {
-    cloudfront_default_certificate = true
+    cloudfront_default_certificate = !local.use_custom_web_domain
+    # Reference validated cert so distribution waits for DNS validation (implicit dependency).
+    acm_certificate_arn      = local.use_custom_web_domain ? aws_acm_certificate_validation.web_cloudfront[0].certificate_arn : null
+    ssl_support_method       = local.use_custom_web_domain ? "sni-only" : null
+    minimum_protocol_version = local.use_custom_web_domain ? "TLSv1.2_2021" : null
   }
 
   depends_on = [aws_apprunner_service.web]
