@@ -136,6 +136,14 @@ Use this guide to **orient quickly**: skim [About](#about-the-project) and [Data
 - **CI:** [.github/workflows/ci.yml](.github/workflows/ci.yml) — pytest, TypeScript, lint, production build.  
 - **Logs and errors:** structured retrieval logging (e.g. `rag_pipeline.py`, hashed query identifiers), HTTP error shaping in `backend/app/api/v1/generate.py`, usage limits and headers in `backend/app/services/usage_limit.py`.
 
+### Logging and observability snapshot
+
+- **Application logging:** Python module loggers are used across backend services (RAG, Pinecone, OCR, clarification, search adapters, billing/entitlements).  
+- **Structured retrieval telemetry:** `backend/app/ai/rag_pipeline.py` emits one-line JSON log payloads (`query_hash`, score bands, grounding label, client mode) without raw query text.  
+- **Guardrail/runtime files:** `backend/app/logs/README.md` documents runtime files such as authority mismatch events for domain-gate troubleshooting.  
+- **Rate-limit visibility:** `backend/app/services/usage_limit.py` exposes `X-RateLimit-*` headers for request-level observability in clients and logs.  
+- **Current scope:** this repo includes app-level logging; full distributed tracing / centralized dashboards / alerts are deployment choices and can be added on top.
+
 ### Deployment and configuration
 
 - **[infra/README.md](infra/README.md)** and **[docs/DEPLOYMENT_AWS.md](docs/DEPLOYMENT_AWS.md)** — AWS, Terraform, GitHub Actions, secrets via CI (not committed `.env` files).  
