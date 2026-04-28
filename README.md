@@ -28,10 +28,82 @@
 | **Docs** | [`docs/`](docs/) | Deployment, environment, roadmaps, specs |
 | **Scripts** | [`scripts/`](scripts/) | Deploy, destroy, S3 state bootstrap, checks |
 
-**Deep-dive (AWS & Terraform):** [infra/README.md](infra/README.md)  
-**Phased deployment & milestones:** [docs/DEPLOYMENT_AWS.md](docs/DEPLOYMENT_AWS.md)  
-**User request flow (UI → API → layers → output):** [docs/USER_REQUEST_FLOW.md](docs/USER_REQUEST_FLOW.md)  
-**Environment variables:** [docs/ENVIRONMENT.md](docs/ENVIRONMENT.md) (see also `*.env.example` in `backend/` and `frontend/`)
+### Directory structure (overview)
+
+```text
+NyayaSetu/
+├── .github/workflows/          # CI, deploy to AWS (ECR → App Runner), Terraform destroy, routing goldens, optional Pinecone jobs
+├── backend/
+│   ├── app/
+│   │   ├── api/v1/             # FastAPI routes: generate, generate-stream, ingest-document, billing, feedback, …
+│   │   ├── ai/                 # RAG pipeline, embeddings, legal reasoning, draft evaluator, LLM helpers
+│   │   ├── services/          # Core orchestration (ai_service), crisis triage, authority, usage limits, OCR
+│   │   ├── rag/               # Legal KB, Pinecone index, ingest jobs, policy
+│   │   ├── core/              # Classifier, jurisdiction graph, authority data
+│   │   └── research/case_law/ # Optional lawyer-mode case-law adapters
+│   ├── tests/                 # pytest suite (routing goldens, RAG, triage, …)
+│   ├── Dockerfile
+│   └── requirements.txt
+├── frontend/
+│   ├── app/                   # Next.js App Router (chat, marketing, blog, localized routes)
+│   ├── components/            # LegalChat, FormattedLetter, marketing UI
+│   ├── lib/                   # API client, parsing, offline queue
+│   ├── Dockerfile
+│   └── package.json
+├── infra/terraform/nyayasetu/ # ECR, App Runner, IAM (OIDC), CloudFront, Route 53 / ACM (optional)
+├── docs/                      # Deployment, architecture, personas, runbooks
+├── scripts/                   # Secret checks, Terraform bootstrap, deploy helpers
+├── docker-compose.yml         # Local API + web
+└── README.md
+```
+
+**Deep-dives:** [infra/README.md](infra/README.md) (AWS & Terraform) · [docs/DEPLOYMENT_AWS.md](docs/DEPLOYMENT_AWS.md) (phased checklist) · [docs/USER_REQUEST_FLOW.md](docs/USER_REQUEST_FLOW.md) (step-by-step request path) · [docs/TECHNICAL_ARCHITECTURE.md](docs/TECHNICAL_ARCHITECTURE.md) (LLM, RAG, guardrails, CI)
+
+**Environment variables:** [docs/ENVIRONMENT.md](docs/ENVIRONMENT.md) — copy from `backend/.env.example` and `frontend/.env.example` (do not commit real `.env` files).
+
+---
+
+## Data flow
+
+At a glance: the **browser** calls the **FastAPI** service (`/generate` or SSE `/generate-stream`). The backend runs **classification → routing → authority → crisis/RAG → LLM formatter** (optional evaluator/refiner), then returns **document**, **explanation**, **next_steps**, and metadata to the UI.
+
+```mermaid
+flowchart LR
+  subgraph client [Browser — Next.js]
+    UI[Pages / LegalChat]
+    API_CLIENT[api.ts — JSON or SSE]
+    UI --> API_CLIENT
+  end
+  subgraph api [FastAPI backend]
+    GEN["POST /generate or /generate-stream"]
+    LIMIT[Usage limit / entitlements]
+    PIPE["generate_legal_response"]
+    GEN --> LIMIT --> PIPE
+  end
+  subgraph pipeline [Inside PIPE]
+    CLASS[Intent & classification]
+    AUTH[Router & verified authority]
+    TRIAGE[Crisis triage]
+    RAG[Strict RAG — local or Pinecone]
+    LLM[OpenAI — formatter optional evaluator]
+    CLASS --> AUTH --> TRIAGE
+    TRIAGE -->|crisis path| LLM
+    TRIAGE -->|normal path| RAG --> LLM
+  end
+  subgraph external [External services]
+    OAI[(OpenAI)]
+    PC[(Pinecone — optional)]
+    CK[(Clerk — auth on web)]
+  end
+  API_CLIENT --> GEN
+  PIPE --> OAI
+  RAG --> OAI
+  RAG --> PC
+  UI --> CK
+```
+
+- **Optional:** `POST /ingest-document` extracts text (and optional OCR); extracted text feeds the **next** chat message to `/generate`.  
+- **Production:** images are built in CI and run on **AWS App Runner** (API + web); see [infra/README.md](infra/README.md).
 
 ---
 
