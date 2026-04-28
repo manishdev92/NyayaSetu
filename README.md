@@ -107,6 +107,58 @@ flowchart LR
 
 ---
 
+## Peer review & demo criteria map
+
+This section aligns the repository with a typical **capstone / squad demo review** rubric (technical depth, engineering practices, production readiness, presentation). Use it to find **evidence in-repo** and to see **what is not fully covered** (explicit gaps).
+
+### Section 1 — Technical depth (~20%)
+
+| Criterion | Where to find evidence in this repo |
+|-------------|--------------------------------------|
+| **Problem selection & scope** | [README § About](#about-the-project) — India-focused legal assistance, safety-aware routing; [docs/USER_PERSONAS.md](docs/USER_PERSONAS.md), [docs/CORPUS_V1_BOUNDARY.md](docs/CORPUS_V1_BOUNDARY.md), [docs/USER_REQUEST_FLOW.md](docs/USER_REQUEST_FLOW.md) (constraints: educational, not a law firm). |
+| **Architecture & design** | [docs/TECHNICAL_ARCHITECTURE.md](docs/TECHNICAL_ARCHITECTURE.md) — components, AWS diagram, RAG vs crisis paths; [docs/USER_REQUEST_FLOW.md](docs/USER_REQUEST_FLOW.md) (Mermaid); directory tree [above](#directory-structure-overview). |
+| **Prompt & model interaction** | [docs/TECHNICAL_ARCHITECTURE.md](docs/TECHNICAL_ARCHITECTURE.md) §7 — formatter JSON contract, temperatures, structured outputs; implementation in `backend/app/services/ai_service.py` (`FORMATTER_SYSTEM_PROMPT`, `_run_formatter`), `backend/app/ai/draft_evaluator_agent.py`. |
+| **Orchestration & control flow** | `backend/app/services/ai_service.py` (`generate_legal_response`), `backend/app/services/crisis_triage.py`, `backend/app/services/clarification_agent.py`, `backend/app/ai/rag_pipeline.py` — branching (crisis vs RAG), clarifications, fallbacks. |
+
+**Gaps / not claimed here:** trade-off memos are partly implicit (see roadmap); no separate ADR folder. Few-shot examples in prompts are not summarized in a single “prompt catalog” document.
+
+### Section 2 — Engineering practices (~20%)
+
+| Criterion | Where to find evidence |
+|-----------|-------------------------|
+| **Code quality** | Split **FastAPI** (`backend/app/api/`), **services**, **ai/**, **rag/**; **Next.js** app router + components; consistent typing in frontend. |
+| **Logging & error handling** | Structured RAG logs (`backend/app/ai/rag_pipeline.py` — query hash, no raw PII); HTTP error codes in `backend/app/api/v1/generate.py`; defensive try/except on optional paths (e.g. evaluator). |
+| **Unit / integration tests** | `backend/tests/` — routing, RAG, triage, clarification, ingest; [backend/docs/GOLDEN_ROUTING.md](backend/docs/GOLDEN_ROUTING.md); CI runs pytest + frontend typecheck + lint + build ([.github/workflows/ci.yml](.github/workflows/ci.yml)). |
+| **Observability** | Structured retrieval logs; rate-limit headers (`usage_limit.py`). **Not in repo:** APM traces, centralized log aggregation, token-usage dashboards, or alerting playbooks. |
+
+### Section 3 — Production readiness (~15%)
+
+| Criterion | Where to find evidence |
+|-----------|-------------------------|
+| **Solution feasibility** | Deployed path **ECR → App Runner**; configurable RAG (`local` / Pinecone); billing modes documented ([backend/docs/STRIPE.md](backend/docs/STRIPE.md)); disclaimers in API/i18n. |
+| **Evaluation strategy** | Regression-style tests + **routing golden** weekly workflow; optional **draft evaluator/refiner** (`EVALUATOR_DUAL_DRAFT`). **Gaps:** no documented LLM-as-judge suite, human rating pipeline, or frozen quality baselines beyond pytest goldens. |
+| **Deployment** | [infra/README.md](infra/README.md), [docs/DEPLOYMENT_AWS.md](docs/DEPLOYMENT_AWS.md) — Terraform, OIDC GitHub → AWS, secrets via GitHub Actions (not committed `.env`). **Gaps:** zero-downtime / blue-green strategy not documented; App Runner rolling behaviour assumed. |
+
+### Section 4 — Presentation (~15%)
+
+| Criterion | Where to find evidence |
+|-----------|-------------------------|
+| **User interface** | `frontend/app/chat/`, `frontend/components/LegalChat.tsx`, streaming UX; localized routes under `frontend/app/hi/`. **Gaps:** formal accessibility (a11y) audit not attached to the repo. |
+| **Demo quality** | Slide outline: [docs/demo/DEMO_TECH_SLIDES_MARP.md](docs/demo/DEMO_TECH_SLIDES_MARP.md) — rehearse flow, URLs, and talking points live (not scored from git alone). |
+| **Communication** | Architecture and flows are documented for reviewers; oral narrative is outside the repo. |
+
+### Section 5 — Giving structured feedback (for reviewers)
+
+Reviewers can use the prompts below and cite **paths or docs** for specificity (avoid generic praise only):
+
+1. **Problem and scope** — Fit for AI, boundaries (education vs advice), domain (India legal routing).  
+2. **Architecture and technical decisions** — Modularity, prompts, orchestration, trade-offs.  
+3. **Code and engineering quality** — Structure, errors, logging, tests, observability limits above.  
+4. **Production readiness** — Feasibility, evaluation coverage, deployment & secrets story.  
+5. **Presentation** — UI/demo clarity; what worked vs what to improve in the live walkthrough.
+
+---
+
 ## Quick start (local)
 
 **Prerequisites:** [Docker](https://docs.docker.com/get-docker/) (or run API + web manually with Node 20+ and Python 3.11+).
